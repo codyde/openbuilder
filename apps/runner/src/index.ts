@@ -9,6 +9,7 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createNativeClaudeQuery } from "./lib/native-claude-sdk.js";
 import { createOpenCodeQuery, USE_OPENCODE_SDK } from "./lib/opencode-sdk.js";
+import { createDroidQuery } from "./lib/droid-sdk-query.js";
 import WebSocket from "ws";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -701,6 +702,12 @@ function createBuildQuery(
   if (agent === "openai-codex") {
     console.log('[runner] 🔄 Using direct Codex SDK (fallback mode)');
     return createCodexQuery();
+  }
+
+  // Factory Droid SDK - uses the droid CLI for builds
+  if (agent === "factory-droid") {
+    console.log('[runner] 🔄 Using Factory Droid SDK');
+    return createDroidQuery(modelId as string);
   }
 
   // Default: Use native Claude Agent SDK (direct integration)
