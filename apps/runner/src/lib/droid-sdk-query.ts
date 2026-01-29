@@ -175,7 +175,12 @@ export function createDroidQuery(modelId?: string) {
       systemPrompt: combinedSystemPrompt,
     };
 
-    debugLog('[runner] [droid-sdk] Creating DroidSession');
+    console.log('[runner] [droid-sdk] Creating DroidSession with options:', {
+      model: modelId || 'default',
+      cwd: workingDirectory,
+      autonomyLevel: 'high',
+      systemPromptLength: combinedSystemPrompt.length,
+    });
     const session = new DroidSession(sessionOptions);
 
     let messageCount = 0;
@@ -209,8 +214,19 @@ export function createDroidQuery(modelId?: string) {
 
       debugLog(`[runner] [droid-sdk] Stream complete - ${messageCount} events, ${toolCallCount} tool calls`);
     } catch (error) {
-      debugLog(`[runner] [droid-sdk] Error: ${error instanceof Error ? error.message : String(error)}`);
-      Sentry.captureException(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+      console.error(`[runner] [droid-sdk] ❌ Error: ${errorMessage}`);
+      console.error(`[runner] [droid-sdk] Stack: ${errorStack}`);
+      console.error(`[runner] [droid-sdk] Model: ${modelId || 'default'}`);
+      console.error(`[runner] [droid-sdk] Working dir: ${workingDirectory}`);
+      Sentry.captureException(error, {
+        extra: {
+          modelId,
+          workingDirectory,
+          promptLength: prompt.length,
+        }
+      });
       throw error;
     } finally {
       // Cleanup session

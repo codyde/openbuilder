@@ -2303,7 +2303,7 @@ export async function startRunner(options: RunnerOptions = {}) {
           // Determine agent to use for this build
           const agent =
             (command.payload.agent as AgentId | undefined) ?? DEFAULT_AGENT;
-          const agentLabel = agent === "openai-codex" ? "Codex" : "Claude";
+          const agentLabel = agent === "openai-codex" ? "Codex" : (agent === "factory-droid" ? "Droid" : "Claude");
           log("selected agent:", agent);
           const claudeModel: ClaudeModelId =
             agent === "claude-code" &&
@@ -2312,6 +2312,10 @@ export async function startRunner(options: RunnerOptions = {}) {
               command.payload.claudeModel === "claude-opus-4-5")
               ? command.payload.claudeModel
               : DEFAULT_CLAUDE_MODEL_ID;
+          
+          // For factory-droid, use the droidModel from payload
+          const droidModel: string | undefined = 
+            agent === "factory-droid" ? command.payload.droidModel : undefined;
 
           // Create AbortController for cancellation support
           const buildAbortController = new AbortController();
@@ -2335,9 +2339,13 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           if (agent === "claude-code") {
             log("claude model:", claudeModel);
+          } else if (agent === "factory-droid") {
+            log("droid model:", droidModel || "default");
           }
 
-          const agentQuery = createBuildQuery(agent, claudeModel, buildAbortController);
+          // Select the appropriate model for the agent
+          const modelId = agent === "factory-droid" ? droidModel : claudeModel;
+          const agentQuery = createBuildQuery(agent, modelId as ClaudeModelId, buildAbortController);
 
           // Reset transformer state for new build
           resetTransformerState();
