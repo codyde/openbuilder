@@ -70,11 +70,25 @@ function transformDroidEvent(event: DroidEvent): TransformedMessage | null {
     case 'message': {
       // Message events from assistant
       if (event.role === 'assistant') {
+        let text = event.text || '';
+        
+        // Filter out TodoWrite JSON that might be embedded in message text
+        // The droid CLI sometimes echoes the todo list as JSON in its message
+        if (text.includes('[{"activeForm"') || text.includes('[{"content"')) {
+          // Try to remove JSON array that looks like todos
+          text = text.replace(/\[(\s*\{[^[\]]*"(activeForm|content|status)"[^[\]]*\}\s*,?\s*)+\]/g, '').trim();
+        }
+        
+        // Skip empty messages after filtering
+        if (!text) {
+          return null;
+        }
+        
         return {
           type: 'assistant',
           message: {
             id: event.id,
-            content: [{ type: 'text', text: event.text }],
+            content: [{ type: 'text', text }],
           },
         };
       }
@@ -83,6 +97,69 @@ function transformDroidEvent(event: DroidEvent): TransformedMessage | null {
 
     case 'tool_call': {
       // Tool call events - map to tool_use format
+      let input = event.parameters;
+      
+      // Special handling for TodoWrite - droid CLI may send different formats,
+      // but UI expects array format: { todos: [{ content, status, activeForm? }] }
+      if (event.toolName === 'TodoWrite' && input) {
+        const rawInput = input as { todos?: unknown };
+        
+        // Case 1: todos is already an array (pass through with normalization)
+        if (Array.isArray(rawInput.todos)) {
+          const normalizedTodos = rawInput.todos.map((item: { content?: string; activeForm?: string; status?: string }) => ({
+            content: item.content || item.activeForm || 'Untitled task',
+            status: item.status || 'pending',
+            activeForm: item.activeForm,
+          }));
+          input = { todos: normalizedTodos };
+          process.stderr.write(`[runner] [droid-sdk] TodoWrite: ${normalizedTodos.length} todos (already array)\n`);
+        }
+        // Case 2: todos is a string (needs parsing)
+        else if (typeof rawInput.todos === 'string') {
+          const rawTodos = rawInput.todos;
+          let parsedTodos: Array<{ content: string; status: string; activeForm?: string }> = [];
+          
+          // Try to parse as JSON first (droid may send serialized array)
+          const trimmed = rawTodos.trim();
+          if (trimmed.startsWith('[')) {
+            try {
+              const jsonParsed = JSON.parse(trimmed);
+              if (Array.isArray(jsonParsed)) {
+                parsedTodos = jsonParsed.map((item: { content?: string; activeForm?: string; status?: string }) => ({
+                  content: item.content || item.activeForm || 'Untitled task',
+                  status: item.status || 'pending',
+                  activeForm: item.activeForm,
+                }));
+                process.stderr.write(`[runner] [droid-sdk] TodoWrite: ${parsedTodos.length} todos parsed from JSON string\n`);
+              }
+            } catch {
+              // Not valid JSON, fall through to line-by-line parsing
+            }
+          }
+          
+          // If JSON parsing didn't work, try numbered format: "1. [completed] Task"
+          if (parsedTodos.length === 0) {
+            const lines = rawTodos.split('\n').filter((l: string) => l.trim());
+            parsedTodos = lines.map((line: string) => {
+              const match = line.match(/^\d+\.\s*\[(\w+)\]\s*(.+)$/);
+              if (match) {
+                return {
+                  content: match[2].trim(),
+                  status: match[1].toLowerCase(),
+                };
+              }
+              return {
+                content: line.replace(/^\d+\.\s*/, '').trim(),
+                status: 'pending',
+              };
+            });
+            process.stderr.write(`[runner] [droid-sdk] TodoWrite: ${parsedTodos.length} todos parsed from numbered format\n`);
+          }
+          
+          input = { todos: parsedTodos };
+        }
+      }
+      
       return {
         type: 'assistant',
         message: {
@@ -91,7 +168,7 @@ function transformDroidEvent(event: DroidEvent): TransformedMessage | null {
             type: 'tool_use',
             id: event.toolId,
             name: event.toolName,
-            input: event.parameters,
+            input,
           }],
         },
       };
@@ -175,56 +252,79 @@ export function createDroidQuery(modelId?: string) {
       systemPrompt: combinedSystemPrompt,
     };
 
-    console.log('[runner] [droid-sdk] Creating DroidSession with options:', {
-      model: modelId || 'default',
-      cwd: workingDirectory,
-      autonomyLevel: 'high',
-      systemPromptLength: combinedSystemPrompt.length,
-    });
+    // Force log to stderr so it shows in TUI mode
+    process.stderr.write(`[runner] [droid-sdk] Creating DroidSession with model=${modelId || 'default'}, cwd=${workingDirectory}\n`);
     const session = new DroidSession(sessionOptions);
+
+    // Listen for error events from the session (these bubble up from the child process)
+    session.on('error', (err: Error) => {
+      process.stderr.write(`[runner] [droid-sdk] Session error event: ${err.message}\n`);
+      if (err.stack) {
+        process.stderr.write(`[runner] [droid-sdk] Stack: ${err.stack}\n`);
+      }
+    });
+
+    session.on('close', (code: number | null) => {
+      process.stderr.write(`[runner] [droid-sdk] Session closed with code: ${code}\n`);
+    });
 
     let messageCount = 0;
     let toolCallCount = 0;
+    let lastEventType = '';
 
     try {
-      debugLog('[runner] [droid-sdk] Sending prompt to Droid');
+      process.stderr.write(`[runner] [droid-sdk] Sending prompt to Droid (${prompt.length} chars)\n`);
 
       // Stream events from the Droid SDK
       for await (const event of session.send(prompt)) {
         messageCount++;
+        lastEventType = event.type;
+
+        // Log every event type to track progress
+        if (event.type === 'tool_call') {
+          toolCallCount++;
+          process.stderr.write(`[runner] [droid-sdk] Event #${messageCount}: tool_call - ${(event as { toolName: string }).toolName}\n`);
+        } else if (event.type === 'tool_result') {
+          const toolResult = event as { isError?: boolean; value?: string };
+          const status = toolResult.isError ? 'ERROR' : 'OK';
+          const preview = (toolResult.value || '').substring(0, 50);
+          process.stderr.write(`[runner] [droid-sdk] Event #${messageCount}: tool_result [${status}] ${preview}...\n`);
+        } else {
+          process.stderr.write(`[runner] [droid-sdk] Event #${messageCount}: ${event.type}\n`);
+        }
 
         // Transform Droid event to our internal format
         const transformed = transformDroidEvent(event);
 
         if (transformed) {
-          // Track stats
-          if (event.type === 'tool_call') {
-            toolCallCount++;
-            debugLog(`[runner] [droid-sdk] Tool call: ${event.toolName}`);
-          }
-
           yield transformed;
         }
 
         // Log completion
         if (event.type === 'completion') {
-          debugLog(`[runner] [droid-sdk] Query complete - ${event.numTurns} turns, ${event.durationMs}ms`);
+          process.stderr.write(`[runner] [droid-sdk] ✅ Query complete - ${(event as { numTurns: number }).numTurns} turns, ${(event as { durationMs: number }).durationMs}ms\n`);
         }
       }
 
-      debugLog(`[runner] [droid-sdk] Stream complete - ${messageCount} events, ${toolCallCount} tool calls`);
+      process.stderr.write(`[runner] [droid-sdk] Stream finished - ${messageCount} events, ${toolCallCount} tool calls, last event: ${lastEventType}\n`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
-      console.error(`[runner] [droid-sdk] ❌ Error: ${errorMessage}`);
-      console.error(`[runner] [droid-sdk] Stack: ${errorStack}`);
-      console.error(`[runner] [droid-sdk] Model: ${modelId || 'default'}`);
-      console.error(`[runner] [droid-sdk] Working dir: ${workingDirectory}`);
+      // Force write to stderr to bypass TUI silent mode
+      process.stderr.write(`\n[runner] [droid-sdk] ❌ Error: ${errorMessage}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Stack: ${errorStack}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Model: ${modelId || 'default'}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Working dir: ${workingDirectory}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Events received: ${messageCount}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Tool calls: ${toolCallCount}\n`);
+      process.stderr.write(`[runner] [droid-sdk] Last event type: ${lastEventType}\n\n`);
       Sentry.captureException(error, {
         extra: {
           modelId,
           workingDirectory,
           promptLength: prompt.length,
+          eventsReceived: messageCount,
+          toolCalls: toolCallCount,
         }
       });
       throw error;

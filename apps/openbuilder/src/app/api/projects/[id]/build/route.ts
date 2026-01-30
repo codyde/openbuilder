@@ -243,6 +243,7 @@ export async function POST(
       operationType: body.operationType,
       agentId,
       claudeModelId: agentId === 'claude-code' ? claudeModel : undefined,
+      droidModelId: agentId === 'factory-droid' ? droidModel : undefined,
       todos: [],
       toolsByTodo: {},
       textByTodo: {},
@@ -267,6 +268,7 @@ export async function POST(
             ...existingState,
             agentId,
             claudeModelId: agentId === 'claude-code' ? claudeModel : undefined,
+            droidModelId: agentId === 'factory-droid' ? droidModel : undefined,
           };
           updatedRawState = JSON.stringify(mergedState);
         } catch (error) {

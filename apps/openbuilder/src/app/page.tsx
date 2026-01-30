@@ -3037,9 +3037,25 @@ function HomeContent() {
                             <div className="flex flex-wrap items-center gap-2">
                               {(generationState?.agentId || latestCompletedBuild?.agentId) && (() => {
                                 const activeAgent = generationState?.agentId || latestCompletedBuild?.agentId;
-                                const activeModel = generationState?.claudeModelId || latestCompletedBuild?.claudeModelId;
-                                const modelValue = activeAgent === 'openai-codex' ? 'gpt-5-codex' : activeModel;
-                                const modelLogo = modelValue ? getModelLogo(modelValue) : null;
+                                const activeClaudeModel = generationState?.claudeModelId || latestCompletedBuild?.claudeModelId;
+                                const activeDroidModel = (generationState as { droidModelId?: string })?.droidModelId || (latestCompletedBuild as { droidModelId?: string })?.droidModelId;
+                                
+                                // Determine model value and display name based on agent
+                                let modelValue: string | undefined;
+                                let displayName: string | undefined;
+                                
+                                if (activeAgent === 'openai-codex') {
+                                  modelValue = 'gpt-5-codex';
+                                  displayName = 'codex';
+                                } else if (activeAgent === 'factory-droid') {
+                                  modelValue = activeDroidModel;
+                                  displayName = activeDroidModel?.replace('claude-', '').replace('gpt-', '').replace('glm-', '') || 'droid';
+                                } else {
+                                  modelValue = activeClaudeModel;
+                                  displayName = activeClaudeModel?.replace('claude-', '');
+                                }
+                                
+                                const modelLogo = modelValue ? getModelLogo(modelValue) : (activeAgent === 'factory-droid' ? '/factory.svg' : null);
                                 return (
                                   <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-muted border border-border rounded text-sm font-mono">
                                     {modelLogo && (
@@ -3047,7 +3063,7 @@ function HomeContent() {
                                     )}
                                     <span className="text-muted-foreground">model:</span>
                                     <span className="text-foreground">
-                                      {activeAgent === 'openai-codex' ? 'codex' : activeModel?.replace('claude-', '')}
+                                      {displayName || 'unknown'}
                                     </span>
                                   </div>
                                 );

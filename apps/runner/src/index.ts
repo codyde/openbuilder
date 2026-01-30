@@ -1404,6 +1404,9 @@ export async function startRunner(options: RunnerOptions = {}) {
           log(`✅ Build completed for project: ${event.projectId}`);
         } else if (event.type === "build-failed") {
           log(`❌ Build failed: ${event.error}`);
+          // Debug: log stack trace to see where this was triggered from
+          process.stderr.write(`[runner] BUILD-FAILED triggered. Error: ${event.error}\n`);
+          process.stderr.write(`[runner] Stack trace at send time:\n${new Error().stack}\n`);
         }
         // Suppress: build-stream, runner-status, ack, etc.
 
@@ -2655,19 +2658,51 @@ export async function startRunner(options: RunnerOptions = {}) {
                 }
                 // Track completed todos for summary context
                 if (toolEvent.toolName === 'TodoWrite' && toolEvent.input) {
-                  const input = toolEvent.input as { todos?: Array<{ id?: string; content: string; status: string; priority?: string }> };
-                  if (input.todos) {
-                    // Update the logger's todo list for the build panel
-                    const todoItems = input.todos.map(t => ({
+                  const rawInput = toolEvent.input as { todos?: string | Array<{ id?: string; content: string; status: string; priority?: string }> };
+                  
+                  // Handle both formats:
+                  // 1. Droid CLI format: string with numbered list like "1. [completed] Task"
+                  // 2. Claude format: array of objects with content, status, etc.
+                  let todoItems: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; priority?: 'high' | 'medium' | 'low' }> = [];
+                  
+                  if (typeof rawInput.todos === 'string') {
+                    // Parse droid CLI string format: "1. [completed] First task\n2. [in_progress] Second task"
+                    const lines = rawInput.todos.split('\n').filter(l => l.trim());
+                    todoItems = lines.map((line, idx) => {
+                      // Match patterns like "1. [completed] Task content" or "1. [in_progress] Task"
+                      const match = line.match(/^\d+\.\s*\[(\w+)\]\s*(.+)$/);
+                      if (match) {
+                        const [, statusStr, content] = match;
+                        const status = statusStr as 'pending' | 'in_progress' | 'completed' | 'cancelled';
+                        return {
+                          id: `todo-${Date.now()}-${idx}`,
+                          content: content.trim(),
+                          status,
+                        };
+                      }
+                      // Fallback: treat line as pending task
+                      return {
+                        id: `todo-${Date.now()}-${idx}`,
+                        content: line.replace(/^\d+\.\s*/, '').trim(),
+                        status: 'pending' as const,
+                      };
+                    });
+                  } else if (Array.isArray(rawInput.todos)) {
+                    // Claude format: array of objects
+                    todoItems = rawInput.todos.map(t => ({
                       id: t.id || `todo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                       content: t.content,
                       status: t.status as 'pending' | 'in_progress' | 'completed' | 'cancelled',
                       priority: t.priority as 'high' | 'medium' | 'low' | undefined,
                     }));
+                  }
+                  
+                  if (todoItems.length > 0) {
+                    // Update the logger's todo list for the build panel
                     logger.updateTodos(todoItems);
                     
                     // Get completed todos (excluding any "summarize" todos from old prompts)
-                    const completed = input.todos
+                    const completed = todoItems
                       .filter(t => t.status === 'completed' && !t.content.toLowerCase().includes('summarize'))
                       .map(t => t.content);
                     // Update our list with the latest completed todos
