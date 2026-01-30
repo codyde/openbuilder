@@ -9,6 +9,7 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createNativeClaudeQuery } from "./lib/native-claude-sdk.js";
 import { createOpenCodeQuery, USE_OPENCODE_SDK } from "./lib/opencode-sdk.js";
+import { createDroidQuery } from "./lib/droid-sdk-query.js";
 import WebSocket from "ws";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -701,6 +702,12 @@ function createBuildQuery(
   if (agent === "openai-codex") {
     console.log('[runner] 🔄 Using direct Codex SDK (fallback mode)');
     return createCodexQuery();
+  }
+
+  // Factory Droid SDK - uses the droid CLI for builds
+  if (agent === "factory-droid") {
+    console.log('[runner] 🔄 Using Factory Droid SDK');
+    return createDroidQuery(modelId as string);
   }
 
   // Default: Use native Claude Agent SDK (direct integration)
@@ -1397,6 +1404,9 @@ export async function startRunner(options: RunnerOptions = {}) {
           log(`✅ Build completed for project: ${event.projectId}`);
         } else if (event.type === "build-failed") {
           log(`❌ Build failed: ${event.error}`);
+          // Debug: log stack trace to see where this was triggered from
+          process.stderr.write(`[runner] BUILD-FAILED triggered. Error: ${event.error}\n`);
+          process.stderr.write(`[runner] Stack trace at send time:\n${new Error().stack}\n`);
         }
         // Suppress: build-stream, runner-status, ack, etc.
 
@@ -2296,7 +2306,7 @@ export async function startRunner(options: RunnerOptions = {}) {
           // Determine agent to use for this build
           const agent =
             (command.payload.agent as AgentId | undefined) ?? DEFAULT_AGENT;
-          const agentLabel = agent === "openai-codex" ? "Codex" : "Claude";
+          const agentLabel = agent === "openai-codex" ? "Codex" : (agent === "factory-droid" ? "Droid" : "Claude");
           log("selected agent:", agent);
           const claudeModel: ClaudeModelId =
             agent === "claude-code" &&
@@ -2305,6 +2315,10 @@ export async function startRunner(options: RunnerOptions = {}) {
               command.payload.claudeModel === "claude-opus-4-5")
               ? command.payload.claudeModel
               : DEFAULT_CLAUDE_MODEL_ID;
+          
+          // For factory-droid, use the droidModel from payload
+          const droidModel: string | undefined = 
+            agent === "factory-droid" ? command.payload.droidModel : undefined;
 
           // Create AbortController for cancellation support
           const buildAbortController = new AbortController();
@@ -2328,9 +2342,13 @@ export async function startRunner(options: RunnerOptions = {}) {
 
           if (agent === "claude-code") {
             log("claude model:", claudeModel);
+          } else if (agent === "factory-droid") {
+            log("droid model:", droidModel || "default");
           }
 
-          const agentQuery = createBuildQuery(agent, claudeModel, buildAbortController);
+          // Select the appropriate model for the agent
+          const modelId = agent === "factory-droid" ? droidModel : claudeModel;
+          const agentQuery = createBuildQuery(agent, modelId as ClaudeModelId, buildAbortController);
 
           // Reset transformer state for new build
           resetTransformerState();
@@ -2640,19 +2658,51 @@ export async function startRunner(options: RunnerOptions = {}) {
                 }
                 // Track completed todos for summary context
                 if (toolEvent.toolName === 'TodoWrite' && toolEvent.input) {
-                  const input = toolEvent.input as { todos?: Array<{ id?: string; content: string; status: string; priority?: string }> };
-                  if (input.todos) {
-                    // Update the logger's todo list for the build panel
-                    const todoItems = input.todos.map(t => ({
+                  const rawInput = toolEvent.input as { todos?: string | Array<{ id?: string; content: string; status: string; priority?: string }> };
+                  
+                  // Handle both formats:
+                  // 1. Droid CLI format: string with numbered list like "1. [completed] Task"
+                  // 2. Claude format: array of objects with content, status, etc.
+                  let todoItems: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled'; priority?: 'high' | 'medium' | 'low' }> = [];
+                  
+                  if (typeof rawInput.todos === 'string') {
+                    // Parse droid CLI string format: "1. [completed] First task\n2. [in_progress] Second task"
+                    const lines = rawInput.todos.split('\n').filter(l => l.trim());
+                    todoItems = lines.map((line, idx) => {
+                      // Match patterns like "1. [completed] Task content" or "1. [in_progress] Task"
+                      const match = line.match(/^\d+\.\s*\[(\w+)\]\s*(.+)$/);
+                      if (match) {
+                        const [, statusStr, content] = match;
+                        const status = statusStr as 'pending' | 'in_progress' | 'completed' | 'cancelled';
+                        return {
+                          id: `todo-${Date.now()}-${idx}`,
+                          content: content.trim(),
+                          status,
+                        };
+                      }
+                      // Fallback: treat line as pending task
+                      return {
+                        id: `todo-${Date.now()}-${idx}`,
+                        content: line.replace(/^\d+\.\s*/, '').trim(),
+                        status: 'pending' as const,
+                      };
+                    });
+                  } else if (Array.isArray(rawInput.todos)) {
+                    // Claude format: array of objects
+                    todoItems = rawInput.todos.map(t => ({
                       id: t.id || `todo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                       content: t.content,
                       status: t.status as 'pending' | 'in_progress' | 'completed' | 'cancelled',
                       priority: t.priority as 'high' | 'medium' | 'low' | undefined,
                     }));
+                  }
+                  
+                  if (todoItems.length > 0) {
+                    // Update the logger's todo list for the build panel
                     logger.updateTodos(todoItems);
                     
                     // Get completed todos (excluding any "summarize" todos from old prompts)
-                    const completed = input.todos
+                    const completed = todoItems
                       .filter(t => t.status === 'completed' && !t.content.toLowerCase().includes('summarize'))
                       .map(t => t.content);
                     // Update our list with the latest completed todos
