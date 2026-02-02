@@ -8,8 +8,8 @@
  * Enable by setting agent to 'factory-droid' in build requests.
  */
 
-import { DroidSession } from 'droid-sdk';
-import type { DroidEvent, DroidSessionOptions } from 'droid-sdk';
+import { DroidSession } from '@openbuilder/droid-sdk';
+import type { DroidEvent, DroidSessionOptions } from '@openbuilder/droid-sdk';
 import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { ensureProjectSkills } from './skills.js';

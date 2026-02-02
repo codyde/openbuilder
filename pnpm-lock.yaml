@@ -239,6 +239,9 @@ importers:
       '@openbuilder/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@openbuilder/droid-sdk':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@openbuilder/opencode-client':
         specifier: workspace:*
         version: link:../../packages/opencode-client
@@ -260,9 +263,6 @@ importers:
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@electric-sql/pglite@0.3.14)(@opentelemetry/api@1.9.0)(@types/pg@8.15.6)(kysely@0.28.9)(pg@8.16.3)
-      droid-sdk:
-        specifier: file:/Users/codydearkland/droid-sdk
-        version: '@openbuilder/droid-sdk@file:../droid-sdk'
       express:
         specifier: ^5.1.0
         version: 5.2.1
@@ -1573,8 +1573,8 @@ packages:
     resolution: {integrity: sha512-9eHMhbXVIylI+lgh+Kput2DEakbYmJBTGHMXgzWwV58/NRrYVCKiAbWS462fHnlRxrJcF7Lmofa0V7uOZp7w7Q==}
     engines: {node: '>=18'}
 
-  '@openbuilder/droid-sdk@file:../droid-sdk':
-    resolution: {directory: ../droid-sdk, type: directory}
+  '@openbuilder/droid-sdk@1.0.0':
+    resolution: {integrity: sha512-rKELnoOL+W7U3m4S7KulEd2eyiF8UjwHI9oyLsRDnFT65n1+bXSn3S/HtjpEwCPVR2Ghk5NEChOdnWdfmusGpA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
     peerDependencies:
@@ -7175,7 +7175,7 @@ snapshots:
 
   '@openai/codex-sdk@0.93.0': {}
 
-  '@openbuilder/droid-sdk@file:../droid-sdk':
+  '@openbuilder/droid-sdk@1.0.0':
     dependencies:
       dotenv: 16.6.1
 
