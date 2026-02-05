@@ -296,11 +296,16 @@ export async function GET(
     if (!path || typeof path !== 'string') return false;
     if (path.includes('/api/projects/')) return false;
     if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) return false;
+    // Check for known framework paths that need proxying
     if (path.startsWith('/src/') || 
         path.startsWith('/@') || 
         path.startsWith('/node_modules/') ||
         path.startsWith('/_serverFn/') ||
-        path.match(/\\.(css|js|ts|tsx|jsx|mjs|json|woff2?|ttf|eot|svg|png|jpe?g|gif|webp|ico)(\\?.*)?$/i)) {
+        path.startsWith('/_next/')) {  // Next.js chunks
+      return true;
+    }
+    // Check for static assets by file extension
+    if (path.match(/\\.(css|js|ts|tsx|jsx|mjs|json|woff2?|ttf|eot|svg|png|jpe?g|gif|webp|ico)(\\?.*)?$/i)) {
       return true;
     }
     return false;
@@ -309,6 +314,35 @@ export async function GET(
   function proxyUrl(path) {
     return proxyPrefix + encodeURIComponent(path);
   }
+
+  // CRITICAL: Override webpack's public path for Next.js chunk loading
+  // Webpack uses __webpack_public_path__ (which becomes __webpack_require__.p) to construct chunk URLs
+  // We need to override this BEFORE webpack bootstrap runs
+  // Setting it to empty string makes webpack use relative paths, which our base tag then handles
+  window.__webpack_public_path__ = proxyPrefix.replace('?path=', '?path=%2F');
+  
+  // Also try to intercept when webpack sets __webpack_require__.p
+  // This handles cases where webpack has already bootstrapped
+  Object.defineProperty(window, '__webpack_require__', {
+    configurable: true,
+    set: function(wr) {
+      if (wr && typeof wr === 'object') {
+        // Intercept the 'p' property (publicPath) when it gets set
+        var originalP = wr.p;
+        Object.defineProperty(wr, 'p', {
+          configurable: true,
+          get: function() { return proxyPrefix.replace('?path=', '?path=%2F'); },
+          set: function(v) { originalP = v; }
+        });
+      }
+      Object.defineProperty(window, '__webpack_require__', {
+        configurable: true,
+        writable: true,
+        value: wr
+      });
+    },
+    get: function() { return undefined; }
+  });
 
   // Path normalization for TanStack Router
   try {
@@ -340,7 +374,7 @@ export async function GET(
     return originalXHROpen.apply(this, arguments);
   };
 
-  // Intercept dynamic element creation for link/script/img elements
+  // Intercept dynamic element creation for link/script/img elements via setAttribute
   var originalSetAttribute = Element.prototype.setAttribute;
   Element.prototype.setAttribute = function(name, value) {
     if ((name === 'href' || name === 'src') && typeof value === 'string' && shouldProxy(value)) {
@@ -348,6 +382,55 @@ export async function GET(
     }
     return originalSetAttribute.call(this, name, value);
   };
+
+  // CRITICAL: Intercept direct property assignments for script.src and link.href
+  // Webpack/Next.js set these directly, not via setAttribute
+  // This catches dynamic chunk loading that bypasses setAttribute
+  
+  // Intercept script.src direct assignments
+  var scriptSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+  if (scriptSrcDescriptor && scriptSrcDescriptor.set) {
+    Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+      set: function(value) {
+        if (typeof value === 'string' && shouldProxy(value)) {
+          value = proxyUrl(value);
+        }
+        scriptSrcDescriptor.set.call(this, value);
+      },
+      get: scriptSrcDescriptor.get,
+      configurable: true
+    });
+  }
+
+  // Intercept link.href direct assignments (for CSS chunks)
+  var linkHrefDescriptor = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
+  if (linkHrefDescriptor && linkHrefDescriptor.set) {
+    Object.defineProperty(HTMLLinkElement.prototype, 'href', {
+      set: function(value) {
+        if (typeof value === 'string' && shouldProxy(value)) {
+          value = proxyUrl(value);
+        }
+        linkHrefDescriptor.set.call(this, value);
+      },
+      get: linkHrefDescriptor.get,
+      configurable: true
+    });
+  }
+
+  // Intercept img.src direct assignments (for dynamically loaded images)
+  var imgSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  if (imgSrcDescriptor && imgSrcDescriptor.set) {
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      set: function(value) {
+        if (typeof value === 'string' && shouldProxy(value)) {
+          value = proxyUrl(value);
+        }
+        imgSrcDescriptor.set.call(this, value);
+      },
+      get: imgSrcDescriptor.get,
+      configurable: true
+    });
+  }
 })();
 </script>`;
 
