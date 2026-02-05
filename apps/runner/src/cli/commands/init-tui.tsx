@@ -93,6 +93,10 @@ interface InitOptions {
  * Run the TUI-based init command
  */
 export async function initTUICommand(options: InitOptions): Promise<void> {
+  // Enable silent mode right before TUI renders
+  // This prevents console output from bleeding into the TUI
+  process.env.SILENT_MODE = '1';
+  
   // Clear screen for fullscreen experience
   console.clear();
 
@@ -118,8 +122,21 @@ export async function initTUICommand(options: InitOptions): Promise<void> {
     }
     
   } catch (error) {
-    // Error was already displayed in TUI
-    console.log('\n');
+    // Display error if it wasn't shown in TUI
+    // CLIErrors from the init flow are shown in TUI, but errors from startCommand are not
+    console.clear();
+    if (error instanceof CLIError) {
+      console.error('\n  Error: ' + error.message + '\n');
+      if (error.suggestions && error.suggestions.length > 0) {
+        console.error('  Suggestions:');
+        error.suggestions.forEach((s: string) => console.error('    - ' + s));
+        console.error('');
+      }
+    } else if (error instanceof Error) {
+      console.error('\n  Error: ' + error.message + '\n');
+    } else {
+      console.error('\n  An unexpected error occurred\n');
+    }
     process.exit(1);
   }
 }
@@ -286,12 +303,32 @@ async function executeInitFlow(
         await pushDatabaseSchema(monorepoPath!, databaseUrl, true); // silent mode
       }
     }
+    
+    // Verify we got a database URL - it's required for the app to work
+    if (!databaseUrl) {
+      throw new Error('Database setup did not return a connection URL');
+    }
+    
     completeTask('database');
     await sleep(layout.taskCompletionDelay);
   } catch (error) {
-    // Database setup is optional, don't fail hard
-    completeTask('database');
-    await sleep(layout.taskCompletionDelay);
+    // Database setup failed - this is a critical error
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    failTask('database', 'Setup failed');
+    failStep('database');
+    setError('Database setup failed', [
+      errorMessage,
+      '',
+      'You can provide your own database:',
+      '  hatchway init --database postgres://...',
+      '',
+      'Or set it manually later:',
+      '  hatchway config set databaseUrl postgres://...',
+    ]);
+    throw new CLIError({
+      code: 'DB_CONNECTION_FAILED',
+      message: 'Failed to setup database: ' + errorMessage,
+    });
   }
 
   completeStep('database');

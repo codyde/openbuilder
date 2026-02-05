@@ -180,6 +180,10 @@ function getSystemUsername(): string {
  * Run the main TUI menu
  */
 export async function mainTUICommand(): Promise<void> {
+  // Enable silent mode right before TUI renders
+  // This prevents console output from bleeding into the TUI
+  process.env.SILENT_MODE = '1';
+  
   // Clear screen for fullscreen experience
   console.clear();
 

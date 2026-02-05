@@ -1,18 +1,7 @@
 #!/usr/bin/env node
-// EARLY TUI DETECTION: Set SILENT_MODE before any modules are imported
-// This suppresses console output in TUI mode
-// Must be done before imports because file-logger.ts captures console at load time
-{
-  const args = process.argv.slice(2);
-  const isRunnerTUI = args[0] === 'runner' && !args.includes('--no-tui');
-  const isRunTUI = args[0] === 'run';
-  const isInitTUI = args[0] === 'init' && (args.includes('-y') || args.includes('--yes') || args.includes('--non-interactive'));
-  const isNoArgsTUI = args.length === 0 || (args.length === 1 && args[0] === '--debug');
-  
-  if (isRunnerTUI || isRunTUI || isInitTUI || isNoArgsTUI) {
-    process.env.SILENT_MODE = '1';
-  }
-}
+// NOTE: SILENT_MODE is now set AFTER TUI rendering starts, not here at the top.
+// This allows pre-TUI messages (errors, OAuth prompts, etc.) to be visible.
+// See start.ts, run.ts, and main-tui.tsx for where SILENT_MODE is set.
 
 // IMPORTANT: Ensure vendor packages are extracted before any imports
 // pnpm postinstall doesn't always run reliably for global installs from URLs
@@ -104,11 +93,9 @@ const isSkipBanner = process.env.HATCHWAY_SKIP_BANNER === '1'; // Skip banner af
 const isTUIMode = isInitWithYes || isNoArgs || isRunCommand || isRunnerCommand;
 const isSilentMode = isTUIMode || isVersionCommand || isSkipBanner;
 
-// Set SILENT_MODE for TUI/version to suppress all console output from other modules
-// This must be set early, before modules that use console.log are imported
-if (isSilentMode) {
-  process.env.SILENT_MODE = '1';
-}
+// NOTE: SILENT_MODE is NOT set here anymore.
+// It's set right before TUI rendering starts in the respective command files.
+// This allows pre-TUI messages (errors, OAuth prompts, etc.) to be visible.
 
 // Auto-update check - do this BEFORE displaying banner to avoid double banners
 // All modes (TUI and CLI): full auto-update with restart

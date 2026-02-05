@@ -48,8 +48,11 @@ export async function clearDatabaseUrlFromEnv(monorepoPath: string): Promise<voi
 }
 
 /**
- * Run neondb setup to create a database and get the connection string
+ * Run get-db (formerly neondb) setup to create a database and get the connection string
  * Returns the DATABASE_URL if successful
+ * 
+ * Note: The 'neondb' package was renamed to 'get-db'. We use 'get-db' directly
+ * to avoid deprecation warnings and ensure compatibility.
  */
 export async function setupDatabase(monorepoPath: string, silent: boolean = false): Promise<string | null> {
   // Clear any stale DATABASE_URL first
@@ -60,7 +63,8 @@ export async function setupDatabase(monorepoPath: string, silent: boolean = fals
   }
 
   return new Promise((resolve) => {
-    const proc = spawn('npx', ['neondb', '-y'], {
+    // Use 'get-db' (the renamed neondb package) for database creation
+    const proc = spawn('npx', ['get-db', '-y'], {
       cwd: monorepoPath, // Run in monorepo root so .env is created there
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
@@ -137,11 +141,11 @@ export async function setupDatabase(monorepoPath: string, silent: boolean = fals
 }
 
 /**
- * Check if neondb is available
+ * Check if get-db (formerly neondb) is available
  */
 export async function isNeondbAvailable(): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn('npx', ['neondb', '--version'], {
+    const proc = spawn('npx', ['get-db', '--version'], {
       stdio: 'ignore',
       shell: true,
     });
