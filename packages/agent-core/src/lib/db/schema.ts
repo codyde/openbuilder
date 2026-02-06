@@ -146,8 +146,9 @@ export const projects = pgTable('projects', {
   neondbExpiresAt: timestamp('neondb_expires_at'), // When unclaimed DB expires (72 hours)
   // Railway integration fields
   railwayProjectId: text('railway_project_id'), // Railway project ID
-  railwayServiceId: text('railway_service_id'), // Railway service ID
+  railwayServiceId: text('railway_service_id'), // Railway service ID (app service)
   railwayEnvironmentId: text('railway_environment_id'), // Railway environment ID (production)
+  railwayDatabaseServiceId: text('railway_database_service_id'), // Railway Postgres database service ID
   railwayDomain: text('railway_domain'), // e.g., "myapp-production.up.railway.app"
   railwayDeploymentStatus: text('railway_deployment_status'), // 'deploying' | 'success' | 'failed' | 'crashed'
   railwayLastDeployedAt: timestamp('railway_last_deployed_at'), // Last successful deployment

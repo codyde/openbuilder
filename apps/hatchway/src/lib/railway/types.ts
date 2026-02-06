@@ -181,6 +181,18 @@ export interface ProjectRailwayStatus {
   lastDeployedAt?: Date;
 }
 
+// Template from Railway API
+export interface RailwayTemplate {
+  id: string;
+  serializedConfig: string;
+}
+
+// Template deploy response
+export interface RailwayTemplateDeployPayload {
+  projectId: string;
+  workflowId: string;
+}
+
 // OAuth state stored in cookie/session
 export interface RailwayOAuthState {
   state: string;

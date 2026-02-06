@@ -15,6 +15,7 @@ import {
   Lock,
   User,
   Pencil,
+  Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -41,7 +42,7 @@ interface RailwaySettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'variables' | 'domain' | 'danger';
+type TabType = 'variables' | 'database' | 'domain' | 'danger';
 
 // Known system variable prefixes that Railway sets automatically
 const SYSTEM_VAR_PREFIXES = [
@@ -101,6 +102,12 @@ export function RailwaySettingsModal({
             label="Variables"
           />
           <TabButton
+            active={activeTab === 'database'}
+            onClick={() => setActiveTab('database')}
+            icon={<Database className="w-4 h-4" />}
+            label="Database"
+          />
+          <TabButton
             active={activeTab === 'domain'}
             onClick={() => setActiveTab('domain')}
             icon={<Globe className="w-4 h-4" />}
@@ -118,6 +125,7 @@ export function RailwaySettingsModal({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {activeTab === 'variables' && <VariablesTab projectId={projectId} />}
+          {activeTab === 'database' && <DatabaseTab projectId={projectId} />}
           {activeTab === 'domain' && <DomainTab projectId={projectId} />}
           {activeTab === 'danger' && <DangerZoneTab projectId={projectId} onClose={onClose} />}
         </div>
@@ -468,6 +476,132 @@ function VariablesTab({ projectId }: { projectId: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// Database Tab
+// ============================================
+
+function DatabaseTab({ projectId }: { projectId: string }) {
+  const { data: statusData, isLoading } = useProjectRailwayStatus(projectId);
+  const [copied, setCopied] = useState(false);
+
+  const database = statusData?.database;
+  const hasDatabase = !!statusData?.railwayDatabaseServiceId;
+
+  const handleCopyServiceId = async () => {
+    if (statusData?.railwayDatabaseServiceId) {
+      await navigator.clipboard.writeText(statusData.railwayDatabaseServiceId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Database Status */}
+      <div>
+        <h3 className="text-sm font-medium text-white mb-2">PostgreSQL Database</h3>
+        <p className="text-sm text-gray-400 mb-4">
+          A PostgreSQL database is automatically provisioned with your Railway deployment using Railway&apos;s official Postgres template.
+        </p>
+
+        {hasDatabase ? (
+          <div className="space-y-4">
+            {/* Status indicator */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+              <div className={cn(
+                'w-2.5 h-2.5 rounded-full flex-shrink-0',
+                database?.status === 'ready' ? 'bg-green-400' :
+                database?.status === 'provisioning' ? 'bg-yellow-400 animate-pulse' :
+                'bg-gray-400'
+              )} />
+              <div className="flex-1">
+                <p className="text-sm text-white font-medium">
+                  {database?.status === 'ready' ? 'Database Ready' :
+                   database?.status === 'provisioning' ? 'Provisioning...' :
+                   'Status Unknown'}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Railway PostgreSQL (SSL-enabled)
+                </p>
+              </div>
+              {database?.hasConnectionUrl && (
+                <span className="px-2 py-0.5 text-xs bg-green-900/30 text-green-400 rounded-full">
+                  Connected
+                </span>
+              )}
+            </div>
+
+            {/* Service ID */}
+            <div>
+              <p className="text-xs text-gray-500 mb-1.5">Database Service ID</p>
+              <div className="flex items-center gap-2 p-2 bg-gray-800/50 rounded-md border border-gray-700/50">
+                <code className="flex-1 text-xs text-gray-400 font-mono truncate">
+                  {statusData?.railwayDatabaseServiceId}
+                </code>
+                <button
+                  onClick={handleCopyServiceId}
+                  className="p-1 text-gray-500 hover:text-white rounded transition-colors flex-shrink-0"
+                  title="Copy Service ID"
+                >
+                  {copied ? (
+                    <Check className="w-3.5 h-3.5 text-green-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Connection info */}
+            <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+              <h4 className="text-xs font-medium text-gray-300 mb-2">Connection Details</h4>
+              <p className="text-xs text-gray-400 mb-2">
+                The <code className="px-1 py-0.5 bg-gray-700 rounded text-purple-400">DATABASE_URL</code> environment variable is automatically wired from the Postgres service to your app service using Railway&apos;s variable reference syntax.
+              </p>
+              <p className="text-xs text-gray-500">
+                Your app receives the full connection string at runtime. View it in the Variables tab under System Variables.
+              </p>
+            </div>
+
+            {/* External access note */}
+            <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+              <h4 className="text-xs font-medium text-gray-300 mb-2">External Access</h4>
+              <p className="text-xs text-gray-400">
+                TCP proxy is enabled by default for external connections. Find the proxy domain and port in the{' '}
+                <a
+                  href="https://railway.com/dashboard"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Railway Dashboard
+                </a>
+                {' '}under your Postgres service settings.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
+            <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
+            <p className="text-xs text-gray-500">
+              A PostgreSQL database will be automatically provisioned on your next deployment.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

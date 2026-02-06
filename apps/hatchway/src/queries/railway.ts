@@ -141,16 +141,24 @@ export function useSetDefaultWorkspace() {
 // Project Deployment Hooks
 // ============================================
 
+interface RailwayDatabaseInfo {
+  serviceId: string;
+  status: string; // 'provisioning' | 'ready' | 'unknown'
+  hasConnectionUrl: boolean;
+}
+
 interface ProjectRailwayDeploymentStatus {
   isDeployed: boolean;
   railwayProjectId?: string;
   railwayServiceId?: string;
   railwayEnvironmentId?: string;
+  railwayDatabaseServiceId?: string;
   domain?: string;
   url?: string;
   status?: string;
   lastDeployedAt?: string;
   latestDeployment?: RailwayDeploymentInfo;
+  database?: RailwayDatabaseInfo | null;
 }
 
 interface DeployToRailwayResponse {
@@ -165,8 +173,10 @@ interface DeployToRailwayResponse {
     railwayProjectId: string;
     railwayServiceId: string;
     railwayEnvironmentId: string;
+    railwayDatabaseServiceId?: string;
     railwayDomain: string;
   };
+  database?: RailwayDatabaseInfo | null;
 }
 
 async function fetchProjectRailwayStatus(projectId: string): Promise<ProjectRailwayDeploymentStatus> {
