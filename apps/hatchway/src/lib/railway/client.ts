@@ -480,6 +480,22 @@ export class RailwayClient {
   }
 
   /**
+   * Commit staged environment changes, triggering a redeployment
+   * of any affected services.
+   * 
+   * Must be called after stageVariableReferences() to apply the changes.
+   */
+  async commitStagedChanges(environmentId: string): Promise<void> {
+    const query = `
+      mutation environmentPatchCommitStaged($environmentId: String!) {
+        environmentPatchCommitStaged(environmentId: $environmentId)
+      }
+    `;
+
+    await this.graphql(query, { environmentId });
+  }
+
+  /**
    * Delete a project
    */
   async deleteProject(projectId: string): Promise<void> {

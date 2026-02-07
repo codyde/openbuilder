@@ -88,7 +88,11 @@ export async function POST(
         DATABASE_URL: databaseUrlRef,
       },
     );
-    console.log(`[Railway Database] Staged DATABASE_URL reference to ${serviceName} on app service`);
+    console.log(`[Railway Database] Staged DATABASE_URL reference to ${serviceName}`);
+
+    // Commit the staged changes to trigger a redeployment
+    await railway.commitStagedChanges(project.railwayEnvironmentId);
+    console.log('[Railway Database] Committed staged changes, redeployment triggered');
 
     // Step 5: Store the database service ID on the project
     await db.update(projects)
