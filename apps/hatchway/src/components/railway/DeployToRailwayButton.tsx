@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ExternalLink, CheckCircle2, XCircle, RefreshCw, Settings, Github, X, Unplug } from 'lucide-react';
+import { Loader2, ExternalLink, CheckCircle2, XCircle, RefreshCw, Settings, Github, X, Unplug, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useRailwayConnection, useProjectRailwayStatus, useDeployToRailway, useDisconnectRailwayDeployment } from '@/queries/railway';
+import { useRailwayConnection, useProjectRailwayStatus, useDeployToRailway, useDisconnectRailwayDeployment, useProvisionRailwayDatabase } from '@/queries/railway';
 import { useGitHubStatus } from '@/queries/github';
 import { RailwayLogo } from './RailwayLogo';
 import { RailwaySettingsModal } from './RailwaySettingsModal';
@@ -45,6 +45,7 @@ export function DeployToRailwayButton({
   const { data: githubStatus, isLoading: githubLoading } = useGitHubStatus(projectId);
   const deployMutation = useDeployToRailway(projectId);
   const disconnectMutation = useDisconnectRailwayDeployment(projectId);
+  const provisionDbMutation = useProvisionRailwayDatabase(projectId);
   
   // Handle hover with delay
   const handleMouseEnter = () => {
@@ -240,6 +241,20 @@ export function DeployToRailwayButton({
                     <RefreshCw className={cn('w-4 h-4', deployMutation.isPending && 'animate-spin')} />
                     Redeploy
                   </button>
+                  {!deploymentStatus?.database?.serviceId && (
+                    <button
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        setIsHovering(false);
+                        await provisionDbMutation.mutateAsync();
+                      }}
+                      disabled={provisionDbMutation.isPending}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      <Database className={cn('w-4 h-4', provisionDbMutation.isPending && 'animate-pulse')} />
+                      {provisionDbMutation.isPending ? 'Provisioning...' : 'Add Database'}
+                    </button>
+                  )}
                   <div className="border-t border-gray-700 my-1" />
                   <button
                     onClick={(e) => {

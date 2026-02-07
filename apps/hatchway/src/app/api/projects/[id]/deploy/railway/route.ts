@@ -8,7 +8,7 @@ import type { RailwayDeploymentStatus, RailwayDeploymentInfo } from '@/lib/railw
 
 /**
  * POST /api/projects/:id/deploy/railway
- * Deploy a project to Railway with an automatically provisioned PostgreSQL database
+ * Deploy a project to Railway
  * 
  * Requirements:
  * - User must have Railway connected
@@ -17,11 +17,12 @@ import type { RailwayDeploymentStatus, RailwayDeploymentInfo } from '@/lib/railw
  * Flow:
  * 1. Create Railway project (or use existing)
  * 2. Create service from GitHub repo
- * 3. Provision PostgreSQL database via Railway's official template (templateDeployV2)
- * 4. Wire DATABASE_URL from Postgres service into the app service
- * 5. Create domain
- * 6. Store Railway info on project
- * 7. Deployment triggers automatically when service is created from repo
+ * 3. Create domain
+ * 4. Store Railway info on project
+ * 5. Deployment triggers automatically when service is created from repo
+ * 
+ * Note: PostgreSQL database can be provisioned separately via
+ * POST /api/projects/:id/deploy/railway/database
  */
 export async function POST(
   req: Request,
@@ -78,7 +79,6 @@ export async function POST(
     let railwayProjectId = project.railwayProjectId;
     let railwayServiceId = project.railwayServiceId;
     let railwayEnvironmentId = project.railwayEnvironmentId;
-    let railwayDatabaseServiceId = project.railwayDatabaseServiceId;
     let railwayDomain = project.railwayDomain;
 
     // Step 1: Create Railway project if needed
@@ -114,65 +114,18 @@ export async function POST(
       railwayServiceId = service.id;
     }
 
-    // Step 3: Provision PostgreSQL database if needed
-    // Uses Railway's official Postgres template via templateDeployV2
-    if (!railwayDatabaseServiceId) {
-      try {
-        console.log('[Railway Deploy] Provisioning PostgreSQL database...');
-        
-        // Deploy the Postgres template into the same project
-        await railway.deployPostgresDatabase(railwayProjectId, railwayEnvironmentId);
-
-        // The template deploy is async — we need to wait briefly then discover the service
-        // Railway creates the service quickly even though the deployment takes longer
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Find the newly-created Postgres service
-        const postgresService = await railway.findPostgresService(
-          railwayProjectId,
-          railwayServiceId!,
-        );
-
-        if (postgresService) {
-          railwayDatabaseServiceId = postgresService.id;
-          console.log('[Railway Deploy] Postgres service created:', postgresService.id);
-
-          // Step 4: Wire DATABASE_URL from Postgres into the app service
-          // Railway's variable reference syntax connects services: ${{Postgres.DATABASE_URL}}
-          // We use String.raw or manual concatenation to avoid JS template literal interpolation
-          const databaseUrlRef = '$' + '{{Postgres.DATABASE_URL}}';
-          await railway.setVariables(
-            railwayProjectId,
-            railwayEnvironmentId,
-            railwayServiceId!,
-            {
-              DATABASE_URL: databaseUrlRef,
-            },
-          );
-          console.log('[Railway Deploy] DATABASE_URL wired to app service');
-        } else {
-          console.warn('[Railway Deploy] Could not find Postgres service after template deploy');
-        }
-      } catch (dbError) {
-        // Database provisioning failure should not block the deploy entirely
-        // The app can still be deployed and the database can be added later
-        console.error('[Railway Deploy] Failed to provision database:', dbError);
-      }
-    }
-
-    // Step 5: Create domain if needed
+    // Step 3: Create domain if needed
     if (!railwayDomain) {
       const domain = await railway.createDomain(railwayServiceId!, railwayEnvironmentId);
       railwayDomain = domain.domain;
     }
 
-    // Step 6: Update project with Railway info
+    // Step 4: Update project with Railway info
     await db.update(projects)
       .set({
         railwayProjectId,
         railwayServiceId,
         railwayEnvironmentId,
-        railwayDatabaseServiceId,
         railwayDomain,
         railwayDeploymentStatus: 'deploying',
         railwayLastDeployedAt: new Date(),
@@ -180,7 +133,7 @@ export async function POST(
       })
       .where(eq(projects.id, id));
 
-    // Step 7: Record deployment
+    // Step 5: Record deployment
     // Note: Railway deployment ID is not available until the deployment starts
     // We'll use a placeholder and update it via webhook when available
     const [deployment] = await db.insert(railwayDeployments)
@@ -209,13 +162,8 @@ export async function POST(
         railwayProjectId,
         railwayServiceId,
         railwayEnvironmentId,
-        railwayDatabaseServiceId,
         railwayDomain,
       },
-      database: railwayDatabaseServiceId ? {
-        serviceId: railwayDatabaseServiceId,
-        status: 'provisioning',
-      } : null,
     });
   } catch (error) {
     const authResponse = handleAuthError(error);
@@ -283,35 +231,6 @@ export async function GET(
       }
     }
 
-    // Fetch database service variables if a database service exists
-    let databaseInfo: {
-      serviceId: string;
-      status: string;
-      hasConnectionUrl: boolean;
-    } | null = null;
-
-    if (project.railwayDatabaseServiceId && project.railwayProjectId && project.railwayEnvironmentId) {
-      try {
-        const railway = createRailwayClient(userId);
-        const dbVars = await railway.getVariables(
-          project.railwayProjectId,
-          project.railwayEnvironmentId,
-          project.railwayDatabaseServiceId,
-        );
-        databaseInfo = {
-          serviceId: project.railwayDatabaseServiceId,
-          status: dbVars.DATABASE_URL ? 'ready' : 'provisioning',
-          hasConnectionUrl: !!dbVars.DATABASE_URL,
-        };
-      } catch {
-        databaseInfo = {
-          serviceId: project.railwayDatabaseServiceId,
-          status: 'unknown',
-          hasConnectionUrl: false,
-        };
-      }
-    }
-
     return NextResponse.json({
       isDeployed: true,
       railwayProjectId: project.railwayProjectId,
@@ -323,7 +242,9 @@ export async function GET(
       status: project.railwayDeploymentStatus,
       lastDeployedAt: project.railwayLastDeployedAt,
       latestDeployment,
-      database: databaseInfo,
+      database: project.railwayDatabaseServiceId ? {
+        serviceId: project.railwayDatabaseServiceId,
+      } : null,
     });
   } catch (error) {
     const authResponse = handleAuthError(error);

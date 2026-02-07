@@ -33,6 +33,7 @@ import {
   useDeleteRailwayService,
   useRedeployRailwayService,
   useProjectRailwayStatus,
+  useProvisionRailwayDatabase,
 } from '@/queries/railway';
 import { RailwayLogo } from './RailwayLogo';
 
@@ -486,6 +487,7 @@ function VariablesTab({ projectId }: { projectId: string }) {
 
 function DatabaseTab({ projectId }: { projectId: string }) {
   const { data: statusData, isLoading } = useProjectRailwayStatus(projectId);
+  const provisionMutation = useProvisionRailwayDatabase(projectId);
   const [copied, setCopied] = useState(false);
 
   const database = statusData?.database;
@@ -497,6 +499,10 @@ function DatabaseTab({ projectId }: { projectId: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleProvision = async () => {
+    await provisionMutation.mutateAsync();
   };
 
   if (isLoading) {
@@ -513,7 +519,7 @@ function DatabaseTab({ projectId }: { projectId: string }) {
       <div>
         <h3 className="text-sm font-medium text-white mb-2">PostgreSQL Database</h3>
         <p className="text-sm text-gray-400 mb-4">
-          A PostgreSQL database is automatically provisioned with your Railway deployment using Railway&apos;s official Postgres template.
+          Provision an SSL-enabled PostgreSQL database powered by Railway&apos;s official Postgres template. The <code className="px-1 py-0.5 bg-gray-800 rounded text-purple-400">DATABASE_URL</code> is automatically wired to your app service.
         </p>
 
         {hasDatabase ? (
@@ -593,12 +599,35 @@ function DatabaseTab({ projectId }: { projectId: string }) {
             </div>
           </div>
         ) : (
-          <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
-            <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
-            <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
-            <p className="text-xs text-gray-500">
-              A PostgreSQL database will be automatically provisioned on your next deployment.
-            </p>
+          <div className="space-y-4">
+            <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
+              <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+              <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
+              <p className="text-xs text-gray-500 mb-4">
+                Add a PostgreSQL database to your Railway project. This will create an SSL-enabled Postgres service with persistent storage and wire the connection string to your app.
+              </p>
+              <button
+                onClick={handleProvision}
+                disabled={provisionMutation.isPending}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-colors',
+                  'bg-purple-600 hover:bg-purple-500 text-white',
+                  provisionMutation.isPending && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                {provisionMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Database className="w-4 h-4" />
+                )}
+                {provisionMutation.isPending ? 'Provisioning...' : 'Add PostgreSQL Database'}
+              </button>
+              {provisionMutation.isError && (
+                <p className="mt-3 text-xs text-red-400">
+                  {provisionMutation.error instanceof Error ? provisionMutation.error.message : 'Failed to provision database'}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
