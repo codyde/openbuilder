@@ -435,6 +435,51 @@ export class RailwayClient {
   }
 
   /**
+   * Stage environment variable changes using the same mutation the Railway dashboard uses.
+   * 
+   * Unlike variableCollectionUpsert (which resolves references into literal values),
+   * this mutation preserves Railway's template reference syntax (e.g. ${{Postgres.DATABASE_URL}})
+   * as proper service-to-service connections visible on the Railway canvas.
+   */
+  async stageVariableReferences(
+    environmentId: string,
+    serviceId: string,
+    variables: Record<string, string>,
+    merge: boolean = true,
+  ): Promise<void> {
+    const query = `
+      mutation stageEnvironmentChanges($environmentId: String!, $payload: EnvironmentConfig!, $merge: Boolean) {
+        environmentStageChanges(
+          environmentId: $environmentId
+          input: $payload
+          merge: $merge
+        ) {
+          id
+        }
+      }
+    `;
+
+    // Build the payload in the exact format the Railway dashboard uses:
+    // { services: { <serviceId>: { variables: { <KEY>: { value: "<ref>" } } } } }
+    const variablesPayload: Record<string, { value: string }> = {};
+    for (const [key, value] of Object.entries(variables)) {
+      variablesPayload[key] = { value };
+    }
+
+    await this.graphql(query, {
+      environmentId,
+      payload: {
+        services: {
+          [serviceId]: {
+            variables: variablesPayload,
+          },
+        },
+      },
+      merge,
+    });
+  }
+
+  /**
    * Delete a project
    */
   async deleteProject(projectId: string): Promise<void> {
