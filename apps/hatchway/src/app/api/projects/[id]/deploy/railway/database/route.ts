@@ -73,11 +73,14 @@ export async function POST(
       );
     }
 
-    console.log('[Railway Database] Postgres service created:', postgresService.id);
+    console.log('[Railway Database] Postgres service created:', postgresService.id, 'name:', postgresService.name);
 
     // Step 4: Wire DATABASE_URL from Postgres service into the app service
-    // Railway's variable reference syntax connects services automatically
-    const databaseUrlRef = '$' + '{{Postgres.DATABASE_URL}}';
+    // Uses Railway's variable reference syntax: ${{<ServiceName>.DATABASE_URL}}
+    // The service name comes from the template (typically "Postgres") and must
+    // match exactly for Railway to resolve the reference at runtime.
+    const serviceName = postgresService.name;
+    const databaseUrlRef = '$' + `{{${serviceName}.DATABASE_URL}}`;
     await railway.setVariables(
       project.railwayProjectId,
       project.railwayEnvironmentId,
@@ -86,7 +89,7 @@ export async function POST(
         DATABASE_URL: databaseUrlRef,
       },
     );
-    console.log('[Railway Database] DATABASE_URL wired to app service');
+    console.log(`[Railway Database] DATABASE_URL=$\{{${serviceName}.DATABASE_URL}} set on app service`);
 
     // Step 5: Store the database service ID on the project
     await db.update(projects)
