@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, ExternalLink, CheckCircle2, XCircle, RefreshCw, Settings, Github, X, Unplug, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -47,12 +48,26 @@ export function DeployToRailwayButton({
   const disconnectMutation = useDisconnectRailwayDeployment(projectId);
   const provisionDbMutation = useProvisionRailwayDatabase(projectId);
   
+  // Compute dropdown position relative to the viewport using the button ref
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  const updateMenuPosition = useCallback(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 4, // mt-1 equivalent
+        left: rect.left,
+      });
+    }
+  }, []);
+
   // Handle hover with delay
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
     }
     hoverTimeoutRef.current = setTimeout(() => {
+      updateMenuPosition();
       setIsHovering(true);
     }, 500); // 0.5s delay
   };
@@ -207,106 +222,119 @@ export function DeployToRailwayButton({
             <ExternalLink className="w-3 h-3" />
           </motion.a>
 
-          {/* Hover menu */}
-          <AnimatePresence>
-            {isHovering && (
-              <motion.div
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -5 }}
-                transition={{ duration: 0.15 }}
-                className="absolute left-0 top-full mt-1 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50"
-              >
-                <div className="p-1.5 space-y-0.5">
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowSettingsModal(true);
-                      setIsHovering(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors"
-                  >
-                    <Settings className="w-4 h-4" />
-                    Settings
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleDeployClick();
-                      setIsHovering(false);
-                    }}
-                    disabled={deployMutation.isPending}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors disabled:opacity-50"
-                  >
-                    <RefreshCw className={cn('w-4 h-4', deployMutation.isPending && 'animate-spin')} />
-                    Redeploy
-                  </button>
-                  {!deploymentStatus?.database?.serviceId && (
+          {/* Hover menu — rendered in a portal to avoid layout/scrollbar issues */}
+          {typeof document !== 'undefined' && createPortal(
+            <AnimatePresence>
+              {isHovering && menuPos && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  transition={{ duration: 0.15 }}
+                  style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                  className="w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50"
+                  onMouseEnter={() => {
+                    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                  }}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <div className="p-1.5 space-y-0.5">
                     <button
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.preventDefault();
+                        setShowSettingsModal(true);
                         setIsHovering(false);
-                        await provisionDbMutation.mutateAsync();
                       }}
-                      disabled={provisionDbMutation.isPending}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Settings
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDeployClick();
+                        setIsHovering(false);
+                      }}
+                      disabled={deployMutation.isPending}
                       className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors disabled:opacity-50"
                     >
-                      <Database className={cn('w-4 h-4', provisionDbMutation.isPending && 'animate-pulse')} />
-                      {provisionDbMutation.isPending ? 'Provisioning...' : 'Add Database'}
+                      <RefreshCw className={cn('w-4 h-4', deployMutation.isPending && 'animate-spin')} />
+                      Redeploy
                     </button>
-                  )}
-                  <div className="border-t border-gray-700 my-1" />
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setShowOptions(true);
-                      setIsHovering(false);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-900/30 rounded-md transition-colors"
-                  >
-                    <Unplug className="w-4 h-4" />
-                    Disconnect
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                    {!deploymentStatus?.database?.serviceId && (
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          setIsHovering(false);
+                          await provisionDbMutation.mutateAsync();
+                        }}
+                        disabled={provisionDbMutation.isPending}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors disabled:opacity-50"
+                      >
+                        <Database className={cn('w-4 h-4', provisionDbMutation.isPending && 'animate-pulse')} />
+                        {provisionDbMutation.isPending ? 'Provisioning...' : 'Add Database'}
+                      </button>
+                    )}
+                    <div className="border-t border-gray-700 my-1" />
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        updateMenuPosition();
+                        setShowOptions(true);
+                        setIsHovering(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-900/30 rounded-md transition-colors"
+                    >
+                      <Unplug className="w-4 h-4" />
+                      Disconnect
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
 
-          {/* Disconnect confirmation dropdown */}
-          <AnimatePresence>
-            {showOptions && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="absolute left-0 top-full mt-1 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50"
-              >
-                <div className="p-2 space-y-1">
-                  <p className="px-3 py-2 text-xs text-gray-400">Choose an option:</p>
-                  <button
-                    onClick={() => handleDisconnect(false)}
-                    disabled={disconnectMutation.isPending}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors"
-                  >
-                    Disconnect (keep Railway project)
-                  </button>
-                  <button
-                    onClick={() => handleDisconnect(true)}
-                    disabled={disconnectMutation.isPending}
-                    className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-900/30 rounded-md transition-colors"
-                  >
-                    Delete Railway project
-                  </button>
-                  <button
-                    onClick={() => setShowOptions(false)}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:bg-gray-700/50 rounded-md transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Disconnect confirmation dropdown — rendered in a portal */}
+          {typeof document !== 'undefined' && createPortal(
+            <AnimatePresence>
+              {showOptions && menuPos && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                  className="w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50"
+                >
+                  <div className="p-2 space-y-1">
+                    <p className="px-3 py-2 text-xs text-gray-400">Choose an option:</p>
+                    <button
+                      onClick={() => handleDisconnect(false)}
+                      disabled={disconnectMutation.isPending}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors"
+                    >
+                      Disconnect (keep Railway project)
+                    </button>
+                    <button
+                      onClick={() => handleDisconnect(true)}
+                      disabled={disconnectMutation.isPending}
+                      className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-900/30 rounded-md transition-colors"
+                    >
+                      Delete Railway project
+                    </button>
+                    <button
+                      onClick={() => setShowOptions(false)}
+                      className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:bg-gray-700/50 rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )}
         </div>
         
         {/* Settings Modal */}
