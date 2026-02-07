@@ -308,20 +308,15 @@ export function DeployToRailwayButton({
                   className="w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50"
                 >
                   <div className="p-2 space-y-1">
-                    <p className="px-3 py-2 text-xs text-gray-400">Choose an option:</p>
+                    <p className="px-3 py-2 text-xs text-gray-400">
+                      This will disconnect from Railway. Your Railway project will remain on Railway&apos;s dashboard.
+                    </p>
                     <button
                       onClick={() => handleDisconnect(false)}
                       disabled={disconnectMutation.isPending}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-gray-700/50 rounded-md transition-colors"
-                    >
-                      Disconnect (keep Railway project)
-                    </button>
-                    <button
-                      onClick={() => handleDisconnect(true)}
-                      disabled={disconnectMutation.isPending}
                       className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-900/30 rounded-md transition-colors"
                     >
-                      Delete Railway project
+                      Disconnect
                     </button>
                     <button
                       onClick={() => setShowOptions(false)}

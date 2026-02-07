@@ -292,44 +292,12 @@ export async function DELETE(
     const { project, session } = await requireProjectOwnership(id);
     const userId = session.user.id;
 
-    const railway = createRailwayClient(userId);
-
+    // Note: Railway OAuth tokens do not have permission to delete projects or services.
+    // We only disconnect locally. Users can delete resources from the Railway dashboard.
     if (deleteRailwayProject && project.railwayProjectId) {
-      // Delete all services first (OAuth tokens reliably have service-level permission),
-      // then attempt project deletion as best-effort.
-      try {
-        const projectDetails = await railway.getProject(project.railwayProjectId);
-        for (const service of projectDetails.services) {
-          try {
-            await railway.deleteService(service.id);
-          } catch (err) {
-            console.warn(`Failed to delete Railway service ${service.id}:`, err);
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to list Railway project services:', error);
-      }
-      try {
-        await railway.deleteProject(project.railwayProjectId);
-      } catch (error) {
-        console.warn('Failed to delete Railway project (OAuth may lack permission):', error);
-      }
+      console.log(`[Railway] Disconnecting project ${project.railwayProjectId} (delete from Railway dashboard)`);
     } else {
-      // Just disconnect — clean up individual services
-      if (project.railwayServiceId) {
-        try {
-          await railway.deleteService(project.railwayServiceId);
-        } catch (error) {
-          console.warn('Failed to delete Railway app service:', error);
-        }
-      }
-      if (project.railwayDatabaseServiceId) {
-        try {
-          await railway.deleteService(project.railwayDatabaseServiceId);
-        } catch (error) {
-          console.warn('Failed to delete Railway database service:', error);
-        }
-      }
+      console.log(`[Railway] Disconnecting services (delete from Railway dashboard)`);
     }
 
     // Clear Railway info from project
