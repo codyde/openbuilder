@@ -228,7 +228,7 @@ A: Yes, while you're using hatchway.sh. It executes builds and serves previews.
 A: Yes! Select your preferred Claude model using the `@model` tag in the web UI:
 - `claude-haiku-4-5` (fast)
 - `claude-sonnet-4-5` (balanced)
-- `claude-opus-4-5` (most capable)
+- `claude-opus-4-6` (most capable)
 
 **Q: How do I update the CLI?**
 A:

@@ -31,7 +31,7 @@ import type { RunnerEvent } from '@hatchway/agent-core';
 const MODEL_MAP: Record<string, string> = {
   'claude-haiku-4-5': 'claude-sonnet-4-5', // Haiku 4.5 not yet available, use Sonnet
   'claude-sonnet-4-5': 'claude-sonnet-4-5',
-  'claude-opus-4-5': 'claude-opus-4-5',
+  'claude-opus-4-6': 'claude-opus-4-6',
 };
 
 function resolveModelName(modelId: string): string {
