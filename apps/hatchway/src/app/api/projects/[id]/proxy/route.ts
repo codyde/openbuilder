@@ -61,7 +61,13 @@ export async function POST(
 ) {
   const { id } = await params;
   const url = new URL(req.url);
-  const path = url.searchParams.get('path') || '/';
+  let path = url.searchParams.get('path') || '/';
+  
+  // Normalize Next.js chunk paths missing /_next/ prefix
+  if (/^\/?static\/(chunks|css|media|development|webpack)\//.test(path)) {
+    path = '/_next/' + path.replace(/^\//, '');
+  }
+
   let proj: (typeof projects.$inferSelect) | undefined;
 
   try {
@@ -161,7 +167,14 @@ export async function GET(
 ) {
   const { id } = await params;
   const url = new URL(req.url);
-  const path = url.searchParams.get('path') || '/';
+  let path = url.searchParams.get('path') || '/';
+  
+  // Normalize Next.js chunk paths that are missing the /_next/ prefix
+  // Webpack may construct URLs like "static/chunks/..." instead of "/_next/static/chunks/..."
+  if (/^\/?static\/(chunks|css|media|development|webpack)\//.test(path)) {
+    path = '/_next/' + path.replace(/^\//, '');
+  }
+
   let proj: (typeof projects.$inferSelect) | undefined;
 
   try {
@@ -326,6 +339,10 @@ export async function GET(
         path.startsWith('/_next/')) {  // Next.js chunks
       return true;
     }
+    // Next.js webpack may construct chunk URLs without /_next/ prefix
+    if (path.match(/^\\/?(static\\/(chunks|css|media|development|webpack)\\/)/)) {
+      return true;
+    }
     // Check for static assets by file extension
     if (path.match(/\\.(css|js|ts|tsx|jsx|mjs|json|woff2?|ttf|eot|svg|png|jpe?g|gif|webp|ico)(\\?.*)?$/i)) {
       return true;
@@ -333,40 +350,24 @@ export async function GET(
     return false;
   }
   
+  // Normalize paths that may be Next.js chunk paths missing the /_next/ prefix
+  function normalizeNextPath(path) {
+    if (!path) return path;
+    if (path.match(/^\\/?(static\\/(chunks|css|media|development|webpack)\\/)/)) {
+      return '/_next/' + path.replace(/^\\//, '');
+    }
+    return path;
+  }
+
   function proxyUrl(url) {
     var path = extractPath(url);
     if (!path) return url;
+    path = normalizeNextPath(path);
     return proxyPrefix + encodeURIComponent(path);
   }
 
-  // CRITICAL: Override webpack's public path for Next.js chunk loading
-  // Webpack uses __webpack_public_path__ (which becomes __webpack_require__.p) to construct chunk URLs
-  // We need to override this BEFORE webpack bootstrap runs
-  // Setting it to empty string makes webpack use relative paths, which our base tag then handles
-  window.__webpack_public_path__ = proxyPrefix.replace('?path=', '?path=%2F');
-  
-  // Also try to intercept when webpack sets __webpack_require__.p
-  // This handles cases where webpack has already bootstrapped
-  Object.defineProperty(window, '__webpack_require__', {
-    configurable: true,
-    set: function(wr) {
-      if (wr && typeof wr === 'object') {
-        // Intercept the 'p' property (publicPath) when it gets set
-        var originalP = wr.p;
-        Object.defineProperty(wr, 'p', {
-          configurable: true,
-          get: function() { return proxyPrefix.replace('?path=', '?path=%2F'); },
-          set: function(v) { originalP = v; }
-        });
-      }
-      Object.defineProperty(window, '__webpack_require__', {
-        configurable: true,
-        writable: true,
-        value: wr
-      });
-    },
-    get: function() { return undefined; }
-  });
+  // Webpack public path override is handled server-side by rewriting __webpack_require__.p
+  // in webpack.js content. No client-side __webpack_require__ interception needed.
 
   // Path normalization for TanStack Router
   try {
@@ -414,13 +415,15 @@ export async function GET(
   // This catches dynamic chunk loading that bypasses setAttribute
   
   // Intercept script.src direct assignments
+  // Must handle both plain strings AND TrustedScriptURL objects (used by webpack Trusted Types)
   var scriptSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
   if (scriptSrcDescriptor && scriptSrcDescriptor.set) {
     Object.defineProperty(HTMLScriptElement.prototype, 'src', {
       set: function(value) {
-        if (typeof value === 'string' && shouldProxy(value)) {
-          var proxied = proxyUrl(value);
-          console.log('[Hatchway Proxy] Intercepted script.src:', value, '->', proxied);
+        var strValue = (typeof value === 'string') ? value : (value && value.toString ? value.toString() : null);
+        if (strValue && shouldProxy(strValue)) {
+          var proxied = proxyUrl(strValue);
+          console.log('[Hatchway Proxy] Intercepted script.src:', strValue, '->', proxied);
           value = proxied;
         }
         scriptSrcDescriptor.set.call(this, value);
@@ -435,8 +438,9 @@ export async function GET(
   if (linkHrefDescriptor && linkHrefDescriptor.set) {
     Object.defineProperty(HTMLLinkElement.prototype, 'href', {
       set: function(value) {
-        if (typeof value === 'string' && shouldProxy(value)) {
-          value = proxyUrl(value);
+        var strValue = (typeof value === 'string') ? value : (value && value.toString ? value.toString() : null);
+        if (strValue && shouldProxy(strValue)) {
+          value = proxyUrl(strValue);
         }
         linkHrefDescriptor.set.call(this, value);
       },
@@ -450,8 +454,9 @@ export async function GET(
   if (imgSrcDescriptor && imgSrcDescriptor.set) {
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
       set: function(value) {
-        if (typeof value === 'string' && shouldProxy(value)) {
-          value = proxyUrl(value);
+        var strValue = (typeof value === 'string') ? value : (value && value.toString ? value.toString() : null);
+        if (strValue && shouldProxy(strValue)) {
+          value = proxyUrl(strValue);
         }
         imgSrcDescriptor.set.call(this, value);
       },
@@ -462,11 +467,14 @@ export async function GET(
 })();
 </script>`;
 
-      const baseTag = `<head>
-    ${earlyScripts}
-    <base href="/api/projects/${id}/proxy?path=/">`;
+      // Inject early scripts into <head> but NO <base> tag.
+      // A <base> tag breaks SVG fragment references (url(#id)) used by libraries
+      // like React Flow, causing visual artifacts and broken rendering.
+      // URL rewriting is handled entirely by the JS interceptors above.
+      const headTag = `<head>
+    ${earlyScripts}`;
       if (/<head>/i.test(html)) {
-        html = html.replace(/<head>/i, baseTag);
+        html = html.replace(/<head>/i, headTag);
       }
 
       // Rewrite src/href attributes that point to absolute root paths
@@ -503,6 +511,20 @@ export async function GET(
         }
       );
 
+      // Rewrite /_next/ paths in RSC inline script payloads (self.__next_f.push data)
+      // These contain React Flight hints like HL["/_next/static/css/...","style"]
+      // and font URLs like /_next/static/media/... that the client loads directly
+      html = html.replace(
+        /(<script>self\.__next_f\.push\(\[1,)([\s\S]*?)("\]\)<\/script>)/gi,
+        (match, prefix, payload, suffix) => {
+          const rewritten = payload.replace(
+            /\/_next\//g,
+            `/api/projects/${id}/proxy?path=%2F_next%2F`
+          );
+          return `${prefix}${rewritten}${suffix}`;
+        }
+      );
+
       // Inject selection script before closing body
       const scriptTag = `<script>${SELECTION_SCRIPT}</script></body>`;
       if (/<\/body>/i.test(html)) {
@@ -534,67 +556,29 @@ export async function GET(
       (path.endsWith('.css') && !path.includes('?direct'))
     ) {
       let js = await response.text();
-      
-      // CRITICAL: Rewrite webpack runtime to use proxy for chunk loading
-      // This handles Next.js dynamic imports (next/dynamic)
-      // The webpack runtime sets __webpack_require__.p (publicPath) which is used for chunk URLs
-      // In Next.js dev, the webpack runtime is in main-app.js, webpack.js, or other chunk files
-      const isWebpackRuntime = (path.includes('webpack') || path.includes('main-app') || path.includes('main.js')) && path.includes('.js');
-      const isNextChunk = path.includes('/_next/static/chunks/');
-      const hasWebpackRequire = js.includes('__webpack_require__');
-      
-      if ((isWebpackRuntime || isNextChunk) && hasWebpackRequire) {
+
+      // Rewrite webpack publicPath in webpack runtime so chunk URLs go through proxy
+      // webpack constructs chunk URLs as: __webpack_require__.p + "static/chunks/file.js"
+      // We rewrite .p from "/_next/" to our proxy prefix with /_next/ encoded in the path
+      if (path.includes('webpack') && /\.js(\?|$)/.test(path) && js.includes('__webpack_require__.p')) {
         const proxyPrefix = `/api/projects/${id}/proxy?path=`;
-        
-        // Replace the publicPath assignment in webpack runtime
-        // Pattern: __webpack_require__.p = "/_next/static/chunks/";
-        // Or: __webpack_require__.p = "/";
-        // Or minified: a.p="/_next/static/chunks/"
         js = js.replace(
-          /(__webpack_require__|[a-zA-Z])\.p\s*=\s*["']([^"']*)["']/g,
-          (match, varName, publicPath) => {
-            // Only rewrite if it's a Next.js path
-            if (publicPath === '/' || publicPath.startsWith('/_next/')) {
-              console.log(`[proxy] Rewriting webpack publicPath: ${publicPath} -> ${proxyPrefix}`);
-              return `${varName}.p="${proxyPrefix}"`;
-            }
-            return match;
+          /__webpack_require__\.p\s*=\s*["'](\/_next\/)["']/g,
+          (match, publicPath) => {
+            const rewritten = `${proxyPrefix}${encodeURIComponent(publicPath)}`;
+            return `__webpack_require__.p="${rewritten}"`;
           }
         );
-        
-        // Also handle the chunk URL construction in __webpack_require__.l
-        // Pattern: script.src = url; where url is constructed from publicPath + chunkId
-        // We need to intercept this more directly by wrapping the load function
-        
-        // Inject a wrapper around __webpack_require__.l to intercept chunk URLs
-        // This runs AFTER webpack runtime but BEFORE any chunks are loaded
-        // Inject whenever we see __webpack_require__.l defined in the file
-        const hasChunkLoader = js.includes('__webpack_require__.l');
-        if (hasChunkLoader) {
-          const chunkInterceptor = `
-;(function(){
-  var proxyPrefix = "${proxyPrefix}";
-  var origL = __webpack_require__.l;
-  if (origL) {
-    __webpack_require__.l = function(url, done, key, chunkId) {
-      // If URL starts with the same origin or is relative, proxy it
-      if (url && typeof url === 'string') {
-        var currentOrigin = window.location.origin;
-        if (url.startsWith(currentOrigin + '/_next/')) {
-          // Extract path from absolute URL
-          url = proxyPrefix + encodeURIComponent(url.substring(currentOrigin.length));
-          console.log('[Hatchway] Intercepted chunk URL:', url);
-        } else if (url.startsWith('/_next/')) {
-          url = proxyPrefix + encodeURIComponent(url);
-          console.log('[Hatchway] Intercepted relative chunk URL:', url);
-        }
-      }
-      return origL.call(this, url, done, key, chunkId);
-    };
-  }
-})();`;
-          js = js + chunkInterceptor;
-        }
+
+        // Fix _N_E_STYLE_LOAD: Next.js extracts pathname from CSS URLs, stripping query params.
+        // This breaks proxy URLs like /api/projects/.../proxy?path=...
+        // Replace: new URL(href).pathname
+        // With:    new URL(href).pathname + new URL(href).search
+        // So the ?path= query parameter is preserved.
+        js = js.replace(
+          /new URL\(href\)\.pathname/g,
+          'new URL(href).pathname+new URL(href).search'
+        );
       }
 
       // CRITICAL: Handle Vite ?url responses specially
