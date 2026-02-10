@@ -141,16 +141,24 @@ export function useSetDefaultWorkspace() {
 // Project Deployment Hooks
 // ============================================
 
+interface RailwayDatabaseInfo {
+  serviceId: string;
+  status: string; // 'provisioning' | 'ready' | 'unknown'
+  hasConnectionUrl: boolean;
+}
+
 interface ProjectRailwayDeploymentStatus {
   isDeployed: boolean;
   railwayProjectId?: string;
   railwayServiceId?: string;
   railwayEnvironmentId?: string;
+  railwayDatabaseServiceId?: string;
   domain?: string;
   url?: string;
   status?: string;
   lastDeployedAt?: string;
   latestDeployment?: RailwayDeploymentInfo;
+  database?: RailwayDatabaseInfo | null;
 }
 
 interface DeployToRailwayResponse {
@@ -165,8 +173,10 @@ interface DeployToRailwayResponse {
     railwayProjectId: string;
     railwayServiceId: string;
     railwayEnvironmentId: string;
+    railwayDatabaseServiceId?: string;
     railwayDomain: string;
   };
+  database?: RailwayDatabaseInfo | null;
 }
 
 async function fetchProjectRailwayStatus(projectId: string): Promise<ProjectRailwayDeploymentStatus> {
@@ -274,6 +284,85 @@ export function useDisconnectRailwayDeployment(projectId: string | undefined) {
       queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'railway'] });
       queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
     },
+  });
+}
+
+// ============================================
+// Database Provisioning Hooks
+// ============================================
+
+interface ProvisionDatabaseResponse {
+  success: boolean;
+  database: {
+    serviceId: string;
+    serviceName: string;
+    status: string;
+  };
+  message: string;
+}
+
+async function provisionRailwayDatabase(projectId: string): Promise<ProvisionDatabaseResponse> {
+  const res = await fetch(`/api/projects/${projectId}/deploy/railway/database`, {
+    method: 'POST',
+  });
+
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to provision database');
+  }
+
+  return res.json();
+}
+
+/**
+ * Hook to provision a PostgreSQL database for a Railway-deployed project
+ */
+export function useProvisionRailwayDatabase(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      if (!projectId) throw new Error('Project ID is required');
+      return provisionRailwayDatabase(projectId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'railway'] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+    },
+  });
+}
+
+// ============================================
+// Database Status Hook
+// ============================================
+
+interface DatabaseStatusResponse {
+  hasDatabase: boolean;
+  database: {
+    serviceId: string;
+    status: string;
+    publicUrl: string | null;
+  } | null;
+}
+
+async function fetchRailwayDatabaseStatus(projectId: string): Promise<DatabaseStatusResponse> {
+  const res = await fetch(`/api/projects/${projectId}/deploy/railway/database`);
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to fetch database status');
+  }
+  return res.json();
+}
+
+/**
+ * Hook to fetch Railway database status and connection details
+ */
+export function useRailwayDatabaseStatus(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['projects', projectId, 'railway', 'database'],
+    queryFn: () => fetchRailwayDatabaseStatus(projectId!),
+    enabled: !!projectId,
+    staleTime: 30 * 1000,
   });
 }
 

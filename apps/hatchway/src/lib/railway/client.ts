@@ -14,6 +14,8 @@ import type {
   RailwayServiceInstance,
   RailwayServiceInstanceUpdateInput,
   RailwayServiceDomain,
+  RailwayTemplate,
+  RailwayTemplateDeployPayload,
 } from './types';
 
 const RAILWAY_GRAPHQL_URL = 'https://backboard.railway.com/graphql/v2';
@@ -433,6 +435,67 @@ export class RailwayClient {
   }
 
   /**
+   * Stage environment variable changes using the same mutation the Railway dashboard uses.
+   * 
+   * Unlike variableCollectionUpsert (which resolves references into literal values),
+   * this mutation preserves Railway's template reference syntax (e.g. ${{Postgres.DATABASE_URL}})
+   * as proper service-to-service connections visible on the Railway canvas.
+   */
+  async stageVariableReferences(
+    environmentId: string,
+    serviceId: string,
+    variables: Record<string, string>,
+    merge: boolean = true,
+  ): Promise<void> {
+    const query = `
+      mutation stageEnvironmentChanges($environmentId: String!, $payload: EnvironmentConfig!, $merge: Boolean) {
+        environmentStageChanges(
+          environmentId: $environmentId
+          input: $payload
+          merge: $merge
+        ) {
+          id
+        }
+      }
+    `;
+
+    // Build the payload in the exact format the Railway dashboard uses:
+    // { services: { <serviceId>: { variables: { <KEY>: { value: "<ref>" } } } } }
+    const variablesPayload: Record<string, { value: string }> = {};
+    for (const [key, value] of Object.entries(variables)) {
+      variablesPayload[key] = { value };
+    }
+
+    await this.graphql(query, {
+      environmentId,
+      payload: {
+        services: {
+          [serviceId]: {
+            variables: variablesPayload,
+          },
+        },
+      },
+      merge,
+    });
+  }
+
+  /**
+   * Commit staged environment changes, triggering a redeployment
+   * of any affected services.
+   * 
+   * Must be called after stageVariableReferences() to apply the changes.
+   */
+  async commitStagedChanges(environmentId: string): Promise<void> {
+    const query = `
+      mutation environmentPatchCommitStaged($environmentId: String!) {
+        environmentPatchCommitStaged(environmentId: $environmentId)
+      }
+    `;
+
+    await this.graphql(query, { environmentId });
+  }
+
+  /**
    * Delete a project
    */
   async deleteProject(projectId: string): Promise<void> {
@@ -738,6 +801,149 @@ export class RailwayClient {
     });
 
     return data.serviceUpdate;
+  }
+
+  /**
+   * Get a template's config by its short code (e.g., "postgres")
+   * 
+   * Note: This uses an unauthenticated request because the template query
+   * is public data but returns "Not Authorized" with OAuth tokens.
+   * Railway's template endpoint works without authentication since
+   * templates are publicly listed in the marketplace.
+   */
+  async getTemplate(code: string): Promise<RailwayTemplate> {
+    const query = `
+      query template($code: String!) {
+        template(code: $code) {
+          id
+          serializedConfig
+        }
+      }
+    `;
+
+    // Make an unauthenticated request — the template query doesn't
+    // work with OAuth tokens but doesn't require auth at all
+    const response = await fetch(RAILWAY_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables: { code } }),
+    });
+
+    const result = await response.json() as {
+      data?: { template: RailwayTemplate };
+      errors?: Array<{ message: string }>;
+    };
+
+    if (!response.ok || (result.errors && result.errors.length > 0)) {
+      const errorMessage = result.errors?.[0]?.message || `HTTP ${response.status}`;
+      console.error('[Railway API] Template query error:', {
+        status: response.status,
+        errors: result.errors,
+        code,
+      });
+      throw new Error(`Railway API error: ${errorMessage}`);
+    }
+
+    if (!result.data?.template) {
+      throw new Error(`Railway template not found: ${code}`);
+    }
+
+    return result.data.template;
+  }
+
+  /**
+   * Deploy a template into a project (e.g., provision a Postgres database)
+   * 
+   * This uses Railway's templateDeployV2 mutation which handles:
+   * - Creating the service from the template's Docker image
+   * - Attaching volumes for data persistence
+   * - Setting up default environment variables (PGHOST, PGPORT, DATABASE_URL, etc.)
+   * - Enabling TCP proxy for external access
+   */
+  async deployTemplate(
+    templateId: string,
+    projectId: string,
+    environmentId: string,
+    serializedConfig: string,
+  ): Promise<RailwayTemplateDeployPayload> {
+    const query = `
+      mutation templateDeployV2($input: TemplateDeployV2Input!) {
+        templateDeployV2(input: $input) {
+          projectId
+          workflowId
+        }
+      }
+    `;
+
+    const data = await this.graphql<{ templateDeployV2: RailwayTemplateDeployPayload }>(query, {
+      input: {
+        templateId,
+        projectId,
+        environmentId,
+        serializedConfig,
+      },
+    });
+
+    return data.templateDeployV2;
+  }
+
+  /**
+   * Deploy a PostgreSQL database into a Railway project.
+   * 
+   * Uses the official Railway Postgres template (code: "postgres") which provisions:
+   * - SSL-enabled Postgres service from ghcr.io/railwayapp-templates/postgres-ssl
+   * - Persistent volume at /var/lib/postgresql/data
+   * - TCP proxy for external connections
+   * - Environment variables: DATABASE_URL, PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
+   * 
+   * Returns the template deploy payload. The newly-created Postgres service ID
+   * must be discovered by re-querying the project's services after deployment.
+   */
+  async deployPostgresDatabase(
+    projectId: string,
+    environmentId: string,
+  ): Promise<RailwayTemplateDeployPayload> {
+    // Step 1: Fetch the official Postgres template config
+    const template = await this.getTemplate('postgres');
+
+    // Step 2: Deploy the template into the project
+    return this.deployTemplate(
+      template.id,
+      projectId,
+      environmentId,
+      template.serializedConfig,
+    );
+  }
+
+  /**
+   * Find the Postgres database service in a project.
+   * 
+   * After deploying the Postgres template, we need to discover the service ID
+   * by listing the project's services and finding the one that wasn't the app service.
+   * The Postgres template creates a service named "Postgres".
+   */
+  async findPostgresService(
+    projectId: string,
+    excludeServiceId?: string,
+  ): Promise<RailwayService | null> {
+    const { services } = await this.getProject(projectId);
+
+    // Look for a service named "Postgres" (the default template name)
+    // or any service that isn't the app service
+    const postgresService = services.find(s => 
+      s.name.toLowerCase().includes('postgres')
+    );
+    if (postgresService) return postgresService;
+
+    // Fallback: find any service that isn't the excluded app service
+    if (excludeServiceId) {
+      const otherService = services.find(s => s.id !== excludeServiceId);
+      if (otherService) return otherService;
+    }
+
+    return null;
   }
 }
 

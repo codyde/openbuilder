@@ -21,7 +21,7 @@ export type OpenCodeProvider =
 export type AnthropicModelId = 
   | 'claude-sonnet-4-5'
   | 'claude-haiku-4-5'
-  | 'claude-opus-4-5';
+  | 'claude-opus-4-6';
 
 export type OpenAIModelId = 
   | 'gpt-4o'
@@ -71,8 +71,8 @@ export const MODEL_METADATA: Record<string, ModelMetadata> = {
     provider: 'anthropic',
     description: 'Fast and efficient',
   },
-  'anthropic/claude-opus-4-5': {
-    label: 'Claude Opus 4.5',
+  'anthropic/claude-opus-4-6': {
+    label: 'Claude Opus 4.6',
     provider: 'anthropic',
     description: 'Most capable for complex tasks',
   },
@@ -107,7 +107,7 @@ export const MODEL_METADATA: Record<string, ModelMetadata> = {
 export const LEGACY_MODEL_MAP: Record<string, OpenCodeModelId> = {
   'claude-haiku-4-5': 'anthropic/claude-haiku-4-5',
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4-5',
-  'claude-opus-4-5': 'anthropic/claude-opus-4-5',
+  'claude-opus-4-6': 'anthropic/claude-opus-4-6',
 };
 
 /**

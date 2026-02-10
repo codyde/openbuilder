@@ -15,6 +15,7 @@ import {
   Lock,
   User,
   Pencil,
+  Database,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -32,6 +33,8 @@ import {
   useDeleteRailwayService,
   useRedeployRailwayService,
   useProjectRailwayStatus,
+  useProvisionRailwayDatabase,
+  useRailwayDatabaseStatus,
 } from '@/queries/railway';
 import { RailwayLogo } from './RailwayLogo';
 
@@ -41,7 +44,7 @@ interface RailwaySettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'variables' | 'domain' | 'danger';
+type TabType = 'variables' | 'database' | 'domain' | 'danger';
 
 // Known system variable prefixes that Railway sets automatically
 const SYSTEM_VAR_PREFIXES = [
@@ -101,6 +104,12 @@ export function RailwaySettingsModal({
             label="Variables"
           />
           <TabButton
+            active={activeTab === 'database'}
+            onClick={() => setActiveTab('database')}
+            icon={<Database className="w-4 h-4" />}
+            label="Database"
+          />
+          <TabButton
             active={activeTab === 'domain'}
             onClick={() => setActiveTab('domain')}
             icon={<Globe className="w-4 h-4" />}
@@ -118,6 +127,7 @@ export function RailwaySettingsModal({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto min-h-0">
           {activeTab === 'variables' && <VariablesTab projectId={projectId} />}
+          {activeTab === 'database' && <DatabaseTab projectId={projectId} />}
           {activeTab === 'domain' && <DomainTab projectId={projectId} />}
           {activeTab === 'danger' && <DangerZoneTab projectId={projectId} onClose={onClose} />}
         </div>
@@ -468,6 +478,130 @@ function VariablesTab({ projectId }: { projectId: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// Database Tab
+// ============================================
+
+function DatabaseTab({ projectId }: { projectId: string }) {
+  const { data: statusData, isLoading: statusLoading } = useProjectRailwayStatus(projectId);
+  const { data: dbData, isLoading: dbLoading } = useRailwayDatabaseStatus(projectId);
+  const provisionMutation = useProvisionRailwayDatabase(projectId);
+  const [copied, setCopied] = useState(false);
+
+  const hasDatabase = !!statusData?.railwayDatabaseServiceId;
+  const dbStatus = dbData?.database?.status;
+  const publicUrl = dbData?.database?.publicUrl;
+  const isLoading = statusLoading || dbLoading;
+
+  const handleCopy = async () => {
+    if (publicUrl) {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h3 className="text-sm font-medium text-white mb-4">PostgreSQL Database</h3>
+
+        {hasDatabase ? (
+          <div className="space-y-4">
+            {/* Status */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+              <div className={cn(
+                'w-2.5 h-2.5 rounded-full flex-shrink-0',
+                dbStatus === 'ready' ? 'bg-green-400' :
+                dbStatus === 'provisioning' ? 'bg-yellow-400 animate-pulse' :
+                'bg-gray-400'
+              )} />
+              <p className="text-sm text-white font-medium flex-1">
+                {dbStatus === 'ready' ? 'Connected' :
+                 dbStatus === 'provisioning' ? 'Provisioning...' :
+                 'Checking...'}
+              </p>
+              {dbStatus === 'ready' && (
+                <span className="px-2 py-0.5 text-xs bg-green-900/30 text-green-400 rounded-full">
+                  SSL
+                </span>
+              )}
+            </div>
+
+            {/* Public connection URL — masked with copy */}
+            {publicUrl && (
+              <div className="bg-gray-800/50 rounded-lg border border-gray-700/50 px-3 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-500 mb-1">Public Connection URL</p>
+                    <p className="text-sm text-gray-400 font-mono tracking-wider truncate">
+                      {'•'.repeat(32)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopy}
+                    className="ml-3 p-1.5 text-gray-500 hover:text-white rounded-md hover:bg-gray-700/50 transition-colors flex-shrink-0"
+                    title="Copy connection URL"
+                  >
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-green-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!publicUrl && dbStatus === 'provisioning' && (
+              <p className="text-xs text-gray-500 text-center py-4">
+                Connection details will appear once the database is ready.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="p-6 text-center border border-dashed border-gray-700 rounded-lg">
+            <Database className="w-8 h-8 text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-400 mb-1">No database provisioned</p>
+            <p className="text-xs text-gray-500 mb-4">
+              Add an SSL-enabled PostgreSQL database with persistent storage. The connection string is automatically wired to your app.
+            </p>
+            <button
+              onClick={() => provisionMutation.mutateAsync()}
+              disabled={provisionMutation.isPending}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 text-sm rounded-md transition-colors',
+                'bg-purple-600 hover:bg-purple-500 text-white',
+                provisionMutation.isPending && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              {provisionMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Database className="w-4 h-4" />
+              )}
+              {provisionMutation.isPending ? 'Provisioning...' : 'Add PostgreSQL Database'}
+            </button>
+            {provisionMutation.isError && (
+              <p className="mt-3 text-xs text-red-400">
+                {provisionMutation.error instanceof Error ? provisionMutation.error.message : 'Failed to provision database'}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -20,6 +20,9 @@ import type { RailwayDeploymentStatus, RailwayDeploymentInfo } from '@/lib/railw
  * 3. Create domain
  * 4. Store Railway info on project
  * 5. Deployment triggers automatically when service is created from repo
+ * 
+ * Note: PostgreSQL database can be provisioned separately via
+ * POST /api/projects/:id/deploy/railway/database
  */
 export async function POST(
   req: Request,
@@ -113,12 +116,12 @@ export async function POST(
 
     // Step 3: Create domain if needed
     if (!railwayDomain) {
-      const domain = await railway.createDomain(railwayServiceId, railwayEnvironmentId);
+      const domain = await railway.createDomain(railwayServiceId!, railwayEnvironmentId);
       railwayDomain = domain.domain;
     }
 
     // Step 4: Update project with Railway info
-    const [updatedProject] = await db.update(projects)
+    await db.update(projects)
       .set({
         railwayProjectId,
         railwayServiceId,
@@ -128,8 +131,7 @@ export async function POST(
         railwayLastDeployedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(projects.id, id))
-      .returning();
+      .where(eq(projects.id, id));
 
     // Step 5: Record deployment
     // Note: Railway deployment ID is not available until the deployment starts
@@ -198,11 +200,13 @@ export async function GET(
       });
     }
 
+    // Create Railway client for API calls in this handler
+    const railway = createRailwayClient(userId);
+
     // Get latest deployment info from Railway
     let latestDeployment: RailwayDeploymentInfo | null = null;
     if (project.railwayServiceId && project.railwayEnvironmentId) {
       try {
-        const railway = createRailwayClient(userId);
         const deployments = await railway.getDeployments(
           project.railwayProjectId,
           project.railwayServiceId,
@@ -234,11 +238,34 @@ export async function GET(
       railwayProjectId: project.railwayProjectId,
       railwayServiceId: project.railwayServiceId,
       railwayEnvironmentId: project.railwayEnvironmentId,
+      railwayDatabaseServiceId: project.railwayDatabaseServiceId,
       domain: project.railwayDomain,
       url: project.railwayDomain ? `https://${project.railwayDomain}` : null,
       status: project.railwayDeploymentStatus,
       lastDeployedAt: project.railwayLastDeployedAt,
       latestDeployment,
+      database: project.railwayDatabaseServiceId ? await (async () => {
+        // Check if the Postgres service is ready by looking for PGHOST
+        try {
+          const dbVars = await railway.getVariables(
+            project.railwayProjectId!,
+            project.railwayEnvironmentId!,
+            project.railwayDatabaseServiceId!,
+          );
+          const ready = !!dbVars.PGHOST;
+          return {
+            serviceId: project.railwayDatabaseServiceId,
+            status: ready ? 'ready' : 'provisioning',
+            hasConnectionUrl: ready,
+          };
+        } catch {
+          return {
+            serviceId: project.railwayDatabaseServiceId,
+            status: 'unknown',
+            hasConnectionUrl: false,
+          };
+        }
+      })() : null,
     });
   } catch (error) {
     const authResponse = handleAuthError(error);
@@ -265,15 +292,12 @@ export async function DELETE(
     const { project, session } = await requireProjectOwnership(id);
     const userId = session.user.id;
 
-    // Optionally delete the Railway project
+    // Note: Railway OAuth tokens do not have permission to delete projects or services.
+    // We only disconnect locally. Users can delete resources from the Railway dashboard.
     if (deleteRailwayProject && project.railwayProjectId) {
-      try {
-        const railway = createRailwayClient(userId);
-        await railway.deleteProject(project.railwayProjectId);
-      } catch (error) {
-        console.warn('Failed to delete Railway project:', error);
-        // Continue anyway - we still want to clear the local reference
-      }
+      console.log(`[Railway] Disconnecting project ${project.railwayProjectId} (delete from Railway dashboard)`);
+    } else {
+      console.log(`[Railway] Disconnecting services (delete from Railway dashboard)`);
     }
 
     // Clear Railway info from project
@@ -282,6 +306,7 @@ export async function DELETE(
         railwayProjectId: null,
         railwayServiceId: null,
         railwayEnvironmentId: null,
+        railwayDatabaseServiceId: null,
         railwayDomain: null,
         railwayDeploymentStatus: null,
         railwayLastDeployedAt: null,

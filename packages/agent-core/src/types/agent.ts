@@ -11,7 +11,7 @@ export type AgentId = 'claude-code' | 'opencode' | 'openai-codex' | 'factory-dro
 export const DEFAULT_AGENT_ID: AgentId = 'claude-code';
 
 // Legacy Claude-specific model IDs (backwards compatibility)
-export type ClaudeModelId = 'claude-haiku-4-5' | 'claude-sonnet-4-5' | 'claude-opus-4-5';
+export type ClaudeModelId = 'claude-haiku-4-5' | 'claude-sonnet-4-5' | 'claude-opus-4-6';
 
 export const DEFAULT_CLAUDE_MODEL_ID: ClaudeModelId = 'claude-sonnet-4-5';
 
@@ -32,7 +32,7 @@ export const DEFAULT_OPENCODE_MODEL_ID: OpenCodeModelId = 'anthropic/claude-sonn
 export const LEGACY_MODEL_MAP: Record<string, OpenCodeModelId> = {
   'claude-haiku-4-5': 'anthropic/claude-haiku-4-5',
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4-5',
-  'claude-opus-4-5': 'anthropic/claude-opus-4-5',
+  'claude-opus-4-6': 'anthropic/claude-opus-4-6',
   'gpt-5-codex': 'openai/gpt-5.2-codex',
   'gpt-5.2-codex': 'openai/gpt-5.2-codex',
 };
@@ -77,8 +77,8 @@ export const CLAUDE_MODEL_METADATA: Record<ClaudeModelId, ModelMetadata> = {
     description: 'Balanced performance and quality',
     provider: 'anthropic',
   },
-  'claude-opus-4-5': {
-    label: 'Claude Opus 4.5',
+  'claude-opus-4-6': {
+    label: 'Claude Opus 4.6',
     description: 'Most capable Claude model for complex tasks',
     provider: 'anthropic',
   },
@@ -96,8 +96,8 @@ export const MODEL_METADATA: Record<string, ModelMetadata> = {
     description: 'Balanced performance and quality',
     provider: 'anthropic',
   },
-  'anthropic/claude-opus-4-5': {
-    label: 'Claude Opus 4.5',
+  'anthropic/claude-opus-4-6': {
+    label: 'Claude Opus 4.6',
     description: 'Most capable for complex tasks',
     provider: 'anthropic',
   },

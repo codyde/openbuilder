@@ -30,14 +30,12 @@ export async function DELETE(
       );
     }
 
-    const railway = createRailwayClient(userId);
-
+    // Note: Railway OAuth tokens do not have permission to delete projects or services.
+    // We only disconnect locally. Users can delete resources from the Railway dashboard.
     if (deleteProject) {
-      // Delete the entire Railway project
-      await railway.deleteProject(project.railwayProjectId);
+      console.log(`[Railway Service] Disconnecting Railway project ${project.railwayProjectId} (delete from Railway dashboard)`);
     } else {
-      // Just delete the service
-      await railway.deleteService(project.railwayServiceId);
+      console.log(`[Railway Service] Disconnecting Railway service ${project.railwayServiceId} (delete from Railway dashboard)`);
     }
 
     // Clear Railway info from our project record
@@ -46,6 +44,7 @@ export async function DELETE(
         railwayProjectId: null,
         railwayServiceId: null,
         railwayEnvironmentId: null,
+        railwayDatabaseServiceId: null,
         railwayDomain: null,
         railwayDeploymentStatus: null,
         railwayLastDeployedAt: null,
