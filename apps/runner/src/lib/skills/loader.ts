@@ -72,7 +72,7 @@ export function loadSkill(name: SkillName): string {
   }
 
   // If no file found, return a descriptive fallback
-  console.warn(`[skills] Could not load skill "${name}" from any path. Searched:`, candidates);
+  process.stderr.write(`[skills] Could not load skill "${name}" from any path. Searched: ${candidates.join(', ')}\n`);
   return `[Skill "${name}" not found]`;
 }
 
@@ -126,7 +126,8 @@ export function composeSkills(context: SkillContext): string[] {
   add('testing-verification');
 
   const totalChars = sections.reduce((sum, s) => sum + s.length, 0);
-  console.log(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]`);
+  // Use process.stderr.write to bypass file-logger's console.log override
+  process.stderr.write(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]\n`);
 
   return sections;
 }
