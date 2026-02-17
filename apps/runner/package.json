@@ -41,11 +41,11 @@
   "homepage": "https://github.com/codyde/hatchway#readme",
   "preferGlobal": true,
   "scripts": {
-    "dev": "RUNNER_WS_URL=ws://localhost:3000/ws/runner tsx --import ./src/instrument.ts src/index.ts",
+    "dev": "RUNNER_WS_URL=ws://localhost:3000/ws/runner RUNNER_SHARED_SECRET=${RUNNER_SHARED_SECRET:-dev-secret} tsx --import ./src/instrument.ts src/index.ts",
     "dev:cli": "tsx --import ./src/instrument.ts src/cli/index.ts",
     "build": "rollup -c && cp templates.json dist/ && mkdir -p dist/lib/skills && cp src/lib/skills/*.md dist/lib/skills/",
     "build:tsc": "tsc -p tsconfig.json",
-    "start": "RUNNER_WS_URL=ws://localhost:3000/ws/runner node --import ./dist/instrument.js dist/index.js",
+    "start": "RUNNER_WS_URL=ws://localhost:3000/ws/runner RUNNER_SHARED_SECRET=${RUNNER_SHARED_SECRET:-dev-secret} node --import ./dist/instrument.js dist/index.js",
     "cli": "node --import ./dist/instrument.js dist/cli/index.js"
   },
   "dependencies": {
