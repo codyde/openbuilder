@@ -391,16 +391,19 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     conversationHistoryCount: conversationHistory?.length || 0,
   });
 
-  // Compose modular skills based on agent type and project context
+  // Compose modular skills based on agent type and project context.
+  // For claude-code: skills are installed as .claude/skills/ files and loaded natively by the SDK.
+  // For other agents (codex, opencode, droid): skills are injected into the system prompt.
   const hasDesignTags = !!(tags && tags.some(t => t.key === 'brand' || t.key === 'framework'));
-  const skillSections = composeSkills({
+  const useNativeSkills = agent === 'claude-code';
+  const skillSections = useNativeSkills ? [] : composeSkills({
     agentId: agent,
     isNewProject,
     hasDesignTags,
   });
 
   const systemPromptSections = await strategy.buildSystemPromptSections(strategyContext);
-  // Skills come first (procedural knowledge), then dynamic context from strategy
+  // For non-Claude agents, skills come first then dynamic context. For Claude, SDK handles skills.
   const systemPrompt = [...skillSections, ...systemPromptSections].join('\n\n');
 
   buildLogger.orchestrator.systemPromptGenerated(systemPrompt.length);

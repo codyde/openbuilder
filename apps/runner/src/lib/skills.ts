@@ -1,114 +1,122 @@
 /**
  * Skills management for Claude Code projects.
- * 
- * This module handles copying bundled skills to project directories
- * so they can be loaded by Claude Code when running in that project.
+ *
+ * Copies modular skill .md files into project .claude/skills/ directories
+ * so the Claude Agent SDK discovers and loads them natively via its
+ * built-in skill tool call mechanism.
  */
 
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Get the directory of this module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Find the bundled skills directory.
- * Works in both development (src/lib/) and production (dist/lib/) modes.
+ * Find the directory containing our skill .md source files.
+ * Works in dev (src/lib/skills/) and bundled (dist/lib/skills/) modes.
  */
-function findBundledSkillsDir(): string | null {
-  // Try multiple possible locations
-  const possiblePaths = [
-    // Development: apps/runner/src/lib/ -> apps/runner/.claude/skills/
-    join(__dirname, '..', '..', '.claude', 'skills'),
-    // Production from dist/lib/: apps/runner/dist/lib/ -> apps/runner/.claude/skills/
-    join(__dirname, '..', '..', '..', '.claude', 'skills'),
-    // Global install: might be in package root
-    join(__dirname, '..', '..', '..', '..', '.claude', 'skills'),
+function findSkillSourceDir(): string | null {
+  const candidates = [
+    join(__dirname, 'skills'),                        // dev: src/lib/skills/
+    join(__dirname, 'lib', 'skills'),                 // bundle: dist/lib/skills/
+    join(__dirname, '..', 'src', 'lib', 'skills'),    // bundle fallback
   ];
-  
-  for (const skillsPath of possiblePaths) {
-    if (existsSync(skillsPath)) {
-      const skills = readdirSync(skillsPath).filter(name => {
-        const fullPath = join(skillsPath, name);
-        return statSync(fullPath).isDirectory();
-      });
-      if (skills.length > 0) {
-        console.log(`[skills] Found bundled skills at: ${skillsPath}`);
-        return skillsPath;
+
+  for (const dir of candidates) {
+    if (existsSync(dir)) {
+      const files = readdirSync(dir).filter(f => f.endsWith('.md'));
+      if (files.length > 0) {
+        return dir;
       }
     }
   }
-  
-  console.log(`[skills] No bundled skills found. Searched paths:`, possiblePaths);
+
   return null;
 }
 
-// Cache the skills directory path
-let _bundledSkillsDir: string | null | undefined = undefined;
+// Cache the source directory
+let _skillSourceDir: string | null | undefined;
 
-function getBundledSkillsDir(): string | null {
-  if (_bundledSkillsDir === undefined) {
-    _bundledSkillsDir = findBundledSkillsDir();
+function getSkillSourceDir(): string | null {
+  if (_skillSourceDir === undefined) {
+    _skillSourceDir = findSkillSourceDir();
   }
-  return _bundledSkillsDir;
+  return _skillSourceDir;
 }
 
+// Skills that should only be installed for new projects (not existing project edits)
+const NEW_PROJECT_ONLY_SKILLS = new Set([
+  'architectural-thinking',
+  'template-originality',
+]);
+
+// Codex-specific skills that shouldn't be installed for Claude SDK
+const CODEX_ONLY_SKILLS = new Set([
+  'todo-workflow-codex',
+]);
+
 /**
- * Copy a directory recursively
+ * Ensure skills are written to a project's .claude/skills/ directory
+ * so the Claude Agent SDK discovers them natively.
+ *
+ * Each skill .md file becomes .claude/skills/<name>/SKILL.md
  */
-function copyDirSync(src: string, dest: string): void {
-  if (!existsSync(src)) {
-    return;
+export function ensureProjectSkills(projectDirectory: string): boolean {
+  const sourceDir = getSkillSourceDir();
+  if (!sourceDir) {
+    process.stderr.write(`[skills] No skill source directory found, skipping project skill installation\n`);
+    return false;
   }
-  
-  mkdirSync(dest, { recursive: true });
-  
-  const entries = readdirSync(src);
-  for (const entry of entries) {
-    const srcPath = join(src, entry);
-    const destPath = join(dest, entry);
-    
-    const stat = statSync(srcPath);
-    if (stat.isDirectory()) {
-      copyDirSync(srcPath, destPath);
-    } else {
-      copyFileSync(srcPath, destPath);
+
+  const skillFiles = readdirSync(sourceDir).filter(f => f.endsWith('.md'));
+  if (skillFiles.length === 0) {
+    return false;
+  }
+
+  const targetBase = join(projectDirectory, '.claude', 'skills');
+  let installed = 0;
+
+  for (const file of skillFiles) {
+    const skillName = basename(file, '.md');
+
+    // Skip codex-only skills for Claude SDK
+    if (CODEX_ONLY_SKILLS.has(skillName)) continue;
+
+    // Skip new-project-only skills for existing projects
+    // (We can't determine this here, so we install all and let the SDK decide)
+
+    const skillDir = join(targetBase, skillName);
+    const targetFile = join(skillDir, 'SKILL.md');
+
+    // Skip if already exists (don't overwrite on every build)
+    if (existsSync(targetFile)) {
+      installed++;
+      continue;
     }
+
+    mkdirSync(skillDir, { recursive: true });
+    const content = readFileSync(join(sourceDir, file), 'utf-8');
+    writeFileSync(targetFile, content, 'utf-8');
+    installed++;
   }
+
+  if (installed > 0) {
+    process.stderr.write(`[skills] Installed ${installed} skills to ${targetBase}\n`);
+  }
+
+  return installed > 0;
 }
 
 /**
- * Ensure skills are available in a project directory.
- * Copies bundled skills to the project's .claude/skills/ directory.
- * 
- * NOTE: Skills are now included in project templates directly, so this
- * function is disabled. Templates include .claude/skills/github-setup/
- * which gets cleaned up after successful GitHub setup.
- * 
- * @param _projectDirectory - The project's working directory (unused - skills bundled in templates)
- * @returns false - skills are now bundled with templates
- */
-export function ensureProjectSkills(_projectDirectory: string): boolean {
-  // Skills are now bundled with templates - no need to copy at runtime
-  // The github-setup skill self-deletes after successful repo creation
-  return false;
-}
-
-/**
- * List available bundled skills
+ * List available skill names from the source directory.
  */
 export function listBundledSkills(): string[] {
-  const bundledSkillsDir = getBundledSkillsDir();
-  if (!bundledSkillsDir) {
-    return [];
-  }
-  
-  // Store in const to help TypeScript narrow the type
-  const skillsDir = bundledSkillsDir;
-  return readdirSync(skillsDir).filter(name => {
-    const skillPath = join(skillsDir, name);
-    return statSync(skillPath).isDirectory();
-  });
+  const sourceDir = getSkillSourceDir();
+  if (!sourceDir) return [];
+
+  return readdirSync(sourceDir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => basename(f, '.md'));
 }
