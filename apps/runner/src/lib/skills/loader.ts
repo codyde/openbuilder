@@ -51,12 +51,13 @@ export function loadSkill(name: SkillName): string {
     return skillCache.get(name)!;
   }
 
-  // Try paths that work in dev (src) and in bundled output (dist)
+  // Try paths that work in dev (src/lib/skills/) and in bundled output (dist/)
+  // In dev: __dirname = src/lib/skills/ (file is right here)
+  // In rollup bundle: __dirname = dist/ (import.meta.url points to dist/index.js)
   const candidates = [
-    join(__dirname, `${name}.md`),
-    join(__dirname, '..', 'lib', 'skills', `${name}.md`),
-    join(__dirname, '..', '..', 'src', 'lib', 'skills', `${name}.md`),
-    join(__dirname, '..', '..', 'lib', 'skills', `${name}.md`),
+    join(__dirname, `${name}.md`),                              // dev: src/lib/skills/{name}.md
+    join(__dirname, 'lib', 'skills', `${name}.md`),             // bundle: dist/lib/skills/{name}.md
+    join(__dirname, '..', 'src', 'lib', 'skills', `${name}.md`), // bundle fallback: src/lib/skills/{name}.md
   ];
 
   for (const candidate of candidates) {
@@ -90,33 +91,42 @@ export interface SkillContext {
  */
 export function composeSkills(context: SkillContext): string[] {
   const sections: string[] = [];
+  const loaded: SkillName[] = [];
+
+  function add(name: SkillName) {
+    sections.push(loadSkill(name));
+    loaded.push(name);
+  }
 
   // Todo workflow: agent-specific variant
   if (context.agentId === 'openai-codex') {
-    sections.push(loadSkill('todo-workflow-codex'));
+    add('todo-workflow-codex');
   } else {
-    sections.push(loadSkill('todo-workflow'));
+    add('todo-workflow');
   }
 
   // Always load: core behavioral skills
-  sections.push(loadSkill('context-awareness'));
-  sections.push(loadSkill('dependency-management'));
-  sections.push(loadSkill('code-quality'));
+  add('context-awareness');
+  add('dependency-management');
+  add('code-quality');
 
   // New project skills (progressive disclosure - skip for existing projects)
   if (context.isNewProject) {
-    sections.push(loadSkill('architectural-thinking'));
-    sections.push(loadSkill('template-originality'));
+    add('architectural-thinking');
+    add('template-originality');
   }
 
   // Design skills: only for new projects or when design tags are present
   if (context.isNewProject || context.hasDesignTags) {
-    sections.push(loadSkill('design-system'));
+    add('design-system');
   }
 
   // Always load: error handling and verification
-  sections.push(loadSkill('error-recovery'));
-  sections.push(loadSkill('testing-verification'));
+  add('error-recovery');
+  add('testing-verification');
+
+  const totalChars = sections.reduce((sum, s) => sum + s.length, 0);
+  console.log(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]`);
 
   return sections;
 }
