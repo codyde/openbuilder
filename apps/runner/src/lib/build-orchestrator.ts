@@ -391,18 +391,19 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     conversationHistoryCount: conversationHistory?.length || 0,
   });
 
-  // Compose modular platform-level skills based on agent type and project context.
-  // These are injected into the system prompt for ALL agents -- they define how the
-  // runner/agent should behave, not project-level skills.
+  // For claude-code: platform skills are provisioned via the SDK's native skill
+  // discovery (additionalDirectories + skills option). The SDK loads descriptions
+  // into context and full content on-demand. No system prompt injection needed.
+  // For other agents (codex, opencode, droid): skills are injected into the system prompt.
   const hasDesignTags = !!(tags && tags.some(t => t.key === 'brand' || t.key === 'framework'));
-  const skillSections = composeSkills({
+  const useNativeSkills = agent === 'claude-code';
+  const skillSections = useNativeSkills ? [] : composeSkills({
     agentId: agent,
     isNewProject,
     hasDesignTags,
   });
 
   const systemPromptSections = await strategy.buildSystemPromptSections(strategyContext);
-  // Skills come first (procedural knowledge), then dynamic context from strategy
   const systemPrompt = [...skillSections, ...systemPromptSections].join('\n\n');
 
   buildLogger.orchestrator.systemPromptGenerated(systemPrompt.length);
