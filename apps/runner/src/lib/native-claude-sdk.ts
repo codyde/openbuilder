@@ -77,7 +77,7 @@ function transformSDKMessage(sdkMessage: SDKMessage): TransformedMessage | null 
         type: 'assistant',
         message: {
           id: sdkMessage.uuid || `msg-${Date.now()}`,
-          content: sdkMessage.message.content.map((block) => {
+          content: sdkMessage.message.content.map((block: { type: string; text?: string; id?: string; name?: string; input?: unknown; thinking?: string }) => {
             if (block.type === 'text') {
               return { type: 'text', text: block.text };
             } else if (block.type === 'tool_use') {
