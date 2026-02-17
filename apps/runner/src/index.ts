@@ -536,7 +536,7 @@ function createCodexQuery(): BuildQueryFn {
     // Note: Codex SDK doesn't have system prompt configuration, so we prepend it to the user prompt
     const combinedPrompt = `${systemParts.join("\n\n")}\n\n${prompt}`;
 
-    fileLog.info('Using CODEX_SYSTEM_PROMPT (TodoWrite references replaced with JSON code blocks)');
+    fileLog.info('Using CODEX_SYSTEM_PROMPT (lean base) + modular skills from orchestrator');
 
     // Resume existing thread for enhancements, start new for initial builds
     let thread;

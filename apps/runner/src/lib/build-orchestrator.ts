@@ -14,6 +14,7 @@ import { resolveAgentStrategy, type AgentStrategyContext } from '@hatchway/agent
 import { buildLogger } from '@hatchway/agent-core/lib/logging/build-logger';
 import type { DesignPreferences } from '@hatchway/agent-core/types/design';
 import type { AppliedTag } from '@hatchway/agent-core/types/tags';
+import { composeSkills } from './skills/loader.js';
 
 export interface MessagePart {
   type: string;
@@ -390,8 +391,17 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     conversationHistoryCount: conversationHistory?.length || 0,
   });
 
+  // Compose modular skills based on agent type and project context
+  const hasDesignTags = !!(tags && tags.some(t => t.key === 'brand' || t.key === 'framework'));
+  const skillSections = composeSkills({
+    agentId: agent,
+    isNewProject,
+    hasDesignTags,
+  });
+
   const systemPromptSections = await strategy.buildSystemPromptSections(strategyContext);
-  const systemPrompt = systemPromptSections.join('\n\n');
+  // Skills come first (procedural knowledge), then dynamic context from strategy
+  const systemPrompt = [...skillSections, ...systemPromptSections].join('\n\n');
 
   buildLogger.orchestrator.systemPromptGenerated(systemPrompt.length);
   
