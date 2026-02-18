@@ -247,6 +247,8 @@ export function createNativeClaudeQuery(
       env: {
         ...process.env,
         CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? '64000',
+        // Enable SDK debug logging for skill discovery diagnostics
+        ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
       // Use preset tools from Claude Code
       tools: { type: 'preset', preset: 'claude_code' },
@@ -259,14 +261,16 @@ export function createNativeClaudeQuery(
       abortController,
       // Capture SDK internal stderr to debug skill discovery
       stderr: (data: string) => {
-        if (data.includes('skill') || data.includes('Skill') || data.includes('SKILL')) {
+        // Log all skill-related and add-dir related output
+        if (data.toLowerCase().includes('skill') || data.includes('add-dir') || data.includes('additional')) {
           process.stderr.write(`[native-sdk:stderr] ${data}\n`);
         }
       },
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
-    debugLog(`[runner] [native-sdk] additionalDirectories: ${JSON.stringify([workingDirectory, ...skillDirectories])}\n`);
+    process.stderr.write(`[native-sdk] additionalDirectories: ${JSON.stringify([workingDirectory, ...skillDirectories])}\n`);
+    process.stderr.write(`[native-sdk] settingSources: ${JSON.stringify(options.settingSources)}\n`);
 
     let messageCount = 0;
     let toolCallCount = 0;
