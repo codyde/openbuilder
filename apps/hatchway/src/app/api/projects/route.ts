@@ -215,7 +215,7 @@ export async function POST(request: Request) {
     console.log('[DEBUG] About to send project.submitted metric with attributes:', submissionAttributes);
     Sentry.metrics.count('project.submitted', 1, {
       attributes: submissionAttributes
-      // e.g., { project_id: '123', browser: 'chrome', model: 'claude-sonnet-4-5', framework: 'next', brand: 'sentry', runner: 'abc-123' }
+      // e.g., { project_id: '123', browser: 'chrome', model: 'claude-sonnet-4-6', framework: 'next', brand: 'sentry', runner: 'abc-123' }
     });
     console.log('[DEBUG] Metric call completed');
 

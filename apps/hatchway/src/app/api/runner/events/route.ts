@@ -692,7 +692,7 @@ IMPORTANT:
                 completionAttributes.framework_source = 'tag'; // Track that this came from a tag
               }
               
-              // completionAttributes: { project_id: '123', model: 'claude-sonnet-4-5', framework: 'next', framework_source: 'tag', brand: 'sentry' }
+              // completionAttributes: { project_id: '123', model: 'claude-sonnet-4-6', framework: 'next', framework_source: 'tag', brand: 'sentry' }
               Sentry.metrics.count('project.completed', 1, {
                 attributes: completionAttributes
               });

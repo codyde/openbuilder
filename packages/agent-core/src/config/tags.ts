@@ -51,21 +51,21 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
     inputType: 'select',
     options: [
       {
-        value: 'claude-sonnet-4-5',
-        label: 'Claude Sonnet 4.5',
+        value: 'claude-sonnet-4-6',
+        label: 'Claude Sonnet 4.6',
         description: 'Anthropic Claude - Balanced performance and speed',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         sdk: 'agent'
       },
       {
-        value: 'claude-opus-4-5',
-        label: 'Claude Opus 4.5',
+        value: 'claude-opus-4-6',
+        label: 'Claude Opus 4.6',
         description: 'Anthropic Claude - Most capable for complex tasks',
         logo: '/claude.png',
         provider: 'claude-code',
-        model: 'claude-opus-4-5',
+        model: 'claude-opus-4-6',
         sdk: 'agent'
       },
       {
@@ -89,10 +89,10 @@ export const TAG_DEFINITIONS: TagDefinition[] = [
       {
         value: 'factory-droid-opus',
         label: 'Factory Droid (Opus)',
-        description: 'Factory Droid SDK with Claude Opus 4.5',
+        description: 'Factory Droid SDK with Claude Opus 4.6',
         logo: '/factory.svg',
         provider: 'factory-droid',
-        model: 'claude-opus-4-5-20251101',
+        model: 'claude-opus-4-6-20251101',
         sdk: 'droid'
       },
       {
