@@ -268,17 +268,20 @@ export function createNativeClaudeQuery(
       // See: https://github.com/anthropics/claude-code/issues/2970
       // See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/46
       abortController,
-      // Capture SDK internal stderr to debug skill discovery
+      // Capture SDK internal stderr to debug skill discovery (suppressed in TUI mode)
       stderr: (data: string) => {
-        // Log all skill-related and add-dir related output
-        if (data.toLowerCase().includes('skill') || data.includes('add-dir') || data.includes('additional')) {
-          process.stderr.write(`[native-sdk:stderr] ${data}\n`);
+        if (process.env.SILENT_MODE !== '1') {
+          if (data.toLowerCase().includes('skill') || data.includes('add-dir') || data.includes('additional')) {
+            process.stderr.write(`[native-sdk:stderr] ${data}\n`);
+          }
         }
       },
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
-    process.stderr.write(`[native-sdk] plugins: ${JSON.stringify(platformPlugins.map(p => p.path))}\n`);
+    if (process.env.SILENT_MODE !== '1') {
+      process.stderr.write(`[native-sdk] plugins: ${JSON.stringify(platformPlugins.map(p => p.path))}\n`);
+    }
 
     let messageCount = 0;
     let toolCallCount = 0;
@@ -322,9 +325,11 @@ export function createNativeClaudeQuery(
           const loadedPlugins = initMsg.plugins ?? [];
           const toolCount = (initMsg.tools ?? []).length;
 
-          process.stderr.write(`[native-sdk] SDK init — skills: [${discoveredSkills.join(', ')}] (${discoveredSkills.length})\n`);
-          process.stderr.write(`[native-sdk] SDK init — plugins: ${JSON.stringify(loadedPlugins)}\n`);
-          process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
+          if (process.env.SILENT_MODE !== '1') {
+            process.stderr.write(`[native-sdk] SDK init — skills: [${discoveredSkills.join(', ')}] (${discoveredSkills.length})\n`);
+            process.stderr.write(`[native-sdk] SDK init — plugins: ${JSON.stringify(loadedPlugins)}\n`);
+            process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
+          }
 
           if (discoveredSkills.length > 0) {
             Sentry.logger.info('SDK initialized with skills', {
@@ -351,7 +356,9 @@ export function createNativeClaudeQuery(
         // Capture tool_use_summary messages — these indicate skill content loading
         if (sdkMessage.type === 'tool_use_summary') {
           const summaryMsg = sdkMessage as { summary?: string; preceding_tool_use_ids?: string[] };
-          process.stderr.write(`[native-sdk] Tool use summary: ${summaryMsg.summary}\n`);
+          if (process.env.SILENT_MODE !== '1') {
+            process.stderr.write(`[native-sdk] Tool use summary: ${summaryMsg.summary}\n`);
+          }
         }
 
         // Log result messages

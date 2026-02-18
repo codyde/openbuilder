@@ -54,7 +54,9 @@ export function loadSkill(name: SkillName): string {
     }
   }
 
-  process.stderr.write(`[skills] Could not load skill "${name}" from any path. Searched: ${candidates.join(', ')}\n`);
+  if (process.env.SILENT_MODE !== '1') {
+    process.stderr.write(`[skills] Could not load skill "${name}" from any path. Searched: ${candidates.join(', ')}\n`);
+  }
   return `[Skill "${name}" not found]`;
 }
 
@@ -100,7 +102,9 @@ export function composeSkills(context: SkillContext): string[] {
   add('build-verification');
 
   const totalChars = sections.reduce((sum, s) => sum + s.length, 0);
-  process.stderr.write(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]\n`);
+  if (process.env.SILENT_MODE !== '1') {
+    process.stderr.write(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]\n`);
+  }
 
   return sections;
 }

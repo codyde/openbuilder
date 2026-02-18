@@ -54,9 +54,13 @@ export function getPlatformPluginDir(): string | null {
     _pluginDir = findPluginDir();
     if (_pluginDir) {
       const names = listBundledSkills();
-      process.stderr.write(`[skills] Platform plugin: ${_pluginDir} (${names.length} skills: [${names.join(', ')}])\n`);
+      if (process.env.SILENT_MODE !== '1') {
+        process.stderr.write(`[skills] Platform plugin: ${_pluginDir} (${names.length} skills: [${names.join(', ')}])\n`);
+      }
     } else {
-      process.stderr.write('[skills] Platform plugin directory not found\n');
+      if (process.env.SILENT_MODE !== '1') {
+        process.stderr.write('[skills] Platform plugin directory not found\n');
+      }
       Sentry.logger.error('Platform plugin directory not found — agent will run without core skills', {
         candidatePaths: [
           join(__dirname, 'skills', 'platform-plugin'),
