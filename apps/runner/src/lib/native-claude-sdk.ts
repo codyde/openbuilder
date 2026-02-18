@@ -300,13 +300,16 @@ export function createNativeClaudeQuery(
     // make the agent span active so tool spans become its children.
     const agentSpan = Sentry.startInactiveSpan({
       op: 'gen_ai.invoke_agent',
-      name: `Claude Agent (${modelId})`,
+      name: 'invoke_agent hatchway-builder',
       attributes: {
+        'gen_ai.operation.name': 'invoke_agent',
         'gen_ai.agent.name': 'hatchway-builder',
         'gen_ai.request.model': modelId,
-        'gen_ai.agent.input': finalPrompt.substring(0, 500),
-        'gen_ai.system_prompt.length': appendedSystemPrompt.length,
-        'gen_ai.agent.available_tools': JSON.stringify(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']),
+        'gen_ai.request.messages': JSON.stringify([{ role: 'user', content: finalPrompt.substring(0, 1000) }]),
+        'gen_ai.request.available_tools': JSON.stringify(
+          ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']
+            .map(name => ({ name, type: 'function' }))
+        ),
       },
     });
 
@@ -333,11 +336,12 @@ export function createNativeClaudeQuery(
                   Sentry.startSpan(
                     {
                       op: 'gen_ai.execute_tool',
-                      name: `Tool: ${block.name}`,
+                      name: `execute_tool ${block.name}`,
                       attributes: {
                         'gen_ai.tool.name': block.name,
                         'gen_ai.tool.call_id': block.id,
                         'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
+                        'gen_ai.request.model': modelId,
                       },
                     },
                     () => {
@@ -413,6 +417,7 @@ export function createNativeClaudeQuery(
         if (sdkMessage.type === 'result') {
           const resultMsg = sdkMessage as {
             subtype?: string;
+            result?: string;
             num_turns?: number;
             total_cost_usd?: number;
             usage?: {
@@ -426,22 +431,30 @@ export function createNativeClaudeQuery(
           };
 
           if (agentSpan) {
+            // Standard gen_ai token usage attributes (Sentry AI Agent Monitoring spec)
             agentSpan.setAttribute('gen_ai.usage.input_tokens', resultMsg.usage?.input_tokens ?? 0);
             agentSpan.setAttribute('gen_ai.usage.output_tokens', resultMsg.usage?.output_tokens ?? 0);
             agentSpan.setAttribute('gen_ai.usage.total_tokens',
               (resultMsg.usage?.input_tokens ?? 0) + (resultMsg.usage?.output_tokens ?? 0));
-            agentSpan.setAttribute('gen_ai.usage.cost_usd', resultMsg.total_cost_usd ?? 0);
-            agentSpan.setAttribute('gen_ai.agent.num_turns', resultMsg.num_turns ?? 0);
-            agentSpan.setAttribute('gen_ai.agent.num_tool_calls', toolCallCount);
-            agentSpan.setAttribute('gen_ai.agent.result', resultMsg.subtype ?? 'unknown');
-            agentSpan.setAttribute('gen_ai.agent.duration_ms', resultMsg.duration_ms ?? 0);
-            agentSpan.setAttribute('gen_ai.agent.duration_api_ms', resultMsg.duration_api_ms ?? 0);
             if (resultMsg.usage?.cache_read_input_tokens) {
-              agentSpan.setAttribute('gen_ai.usage.cache_read_tokens', resultMsg.usage.cache_read_input_tokens);
+              agentSpan.setAttribute('gen_ai.usage.input_tokens.cached', resultMsg.usage.cache_read_input_tokens);
             }
             if (resultMsg.usage?.cache_creation_input_tokens) {
-              agentSpan.setAttribute('gen_ai.usage.cache_creation_tokens', resultMsg.usage.cache_creation_input_tokens);
+              agentSpan.setAttribute('gen_ai.usage.input_tokens.cache_write', resultMsg.usage.cache_creation_input_tokens);
             }
+
+            // Response text (truncated for span safety)
+            if (resultMsg.result) {
+              agentSpan.setAttribute('gen_ai.response.text', JSON.stringify(resultMsg.result.substring(0, 1000)));
+            }
+
+            // Custom (non-spec) attributes for operational insight
+            agentSpan.setAttribute('hatchway.cost_usd', resultMsg.total_cost_usd ?? 0);
+            agentSpan.setAttribute('hatchway.num_turns', resultMsg.num_turns ?? 0);
+            agentSpan.setAttribute('hatchway.num_tool_calls', toolCallCount);
+            agentSpan.setAttribute('hatchway.result', resultMsg.subtype ?? 'unknown');
+            agentSpan.setAttribute('hatchway.duration_ms', resultMsg.duration_ms ?? 0);
+            agentSpan.setAttribute('hatchway.duration_api_ms', resultMsg.duration_api_ms ?? 0);
           }
 
           if (resultMsg.subtype === 'success') {
