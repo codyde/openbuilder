@@ -146,14 +146,16 @@ export async function POST(request: Request) {
 
     console.log('Selected tags:', tags);
 
-    Sentry.logger.info(
-      Sentry.logger.fmt`Creating project from prompt (fallback path) ${{
-        prompt,
-        promptPreview: prompt.substring(0, 100),
-        agent,
-        operation: 'project_creation_fallback',
-      }}`
-    );
+    Sentry.logger.info('Project creation started (fallback path)', {
+      user: session?.user?.name ?? 'anonymous',
+      userEmail: session?.user?.email ?? 'unknown',
+      userId: userId ?? 'local',
+      agent,
+      browser: browserType,
+      promptPreview: prompt.substring(0, 100),
+      promptLength: String(prompt.length),
+      tagCount: String(tags?.length ?? 0),
+    });
 
     // NOTE: This endpoint now uses FALLBACK naming only (no AI calls).
     // The primary path uses runner analysis + create-from-analysis endpoint.
@@ -187,10 +189,17 @@ export async function POST(request: Request) {
 
     Sentry.logger.info('Project created (fallback path)', {
       projectId: project.id,
+      projectSlug: finalSlug,
       projectName: metadata.friendlyName,
-      userName: session?.user?.name ?? 'anonymous',
+      user: session?.user?.name ?? 'anonymous',
+      userEmail: session?.user?.email ?? 'unknown',
       userId: userId ?? 'local',
+      agent,
       browser: browserType,
+      promptPreview: prompt.substring(0, 100),
+      model: tags?.find((t: { key: string; value: string }) => t.key === 'model')?.value ?? 'default',
+      framework: tags?.find((t: { key: string; value: string }) => t.key === 'framework')?.value ?? 'unknown',
+      runner: tags?.find((t: { key: string; value: string }) => t.key === 'runner')?.value ?? 'unknown',
     });
 
     // Persist initial user prompt as first chat message

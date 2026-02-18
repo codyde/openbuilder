@@ -89,13 +89,30 @@ export async function POST(request: Request) {
 
     console.log(`[create-from-analysis] Project created: ${project.id}`);
 
+    // Extract browser type from User-Agent
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    const uaLower = userAgent.toLowerCase();
+    const browserType = uaLower.includes('edg/') ? 'edge'
+      : uaLower.includes('chrome/') && !uaLower.includes('edg/') ? 'chrome'
+      : uaLower.includes('firefox/') ? 'firefox'
+      : uaLower.includes('safari/') && !uaLower.includes('chrome/') ? 'safari'
+      : 'other';
+
     Sentry.logger.info('Project created from analysis', {
       projectId: project.id,
+      projectSlug: finalSlug,
       projectName: friendlyName,
-      userName: session?.user?.name ?? 'anonymous',
+      user: session?.user?.name ?? 'anonymous',
+      userEmail: session?.user?.email ?? 'unknown',
       userId: userId ?? 'local',
+      browser: browserType,
       framework: template?.framework ?? 'unknown',
+      template: template ? 'true' : 'false',
       runnerId: runnerId ?? 'unknown',
+      promptPreview: originalPrompt.substring(0, 100),
+      promptLength: String(originalPrompt.length),
+      model: tags?.find((t: { key: string; value: string }) => t.key === 'model')?.value ?? 'default',
+      runner: tags?.find((t: { key: string; value: string }) => t.key === 'runner')?.value ?? runnerId ?? 'unknown',
     });
 
     // Persist initial user prompt as first chat message
