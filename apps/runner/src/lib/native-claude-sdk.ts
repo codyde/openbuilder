@@ -287,6 +287,12 @@ export function createNativeClaudeQuery(
     let messageCount = 0;
     let toolCallCount = 0;
     let textBlockCount = 0;
+    let turnCount = 0;
+    // Track messages fed into the next LLM turn so we can attach them to gen_ai.request spans.
+    // For turn 1, this is the user prompt; for subsequent turns it's the tool_result messages.
+    let pendingRequestMessages: Array<{ role: string; content: string }> = [
+      { role: 'user', content: finalPrompt.substring(0, 1000) },
+    ];
 
     // Create the gen_ai.invoke_agent span as a child of the current active span.
     //
@@ -322,16 +328,62 @@ export function createNativeClaudeQuery(
         const transformed = transformSDKMessage(sdkMessage);
 
         if (transformed) {
-          // Track stats and emit gen_ai.execute_tool spans for tool calls
+          // --- gen_ai.request span for each LLM turn ---
+          // Each 'assistant' message represents one LLM API call response.
+          // We emit a gen_ai.request span capturing the input messages (from
+          // pendingRequestMessages) and the response text / tool calls.
           if (transformed.type === 'assistant' && transformed.message?.content) {
+            turnCount++;
+
+            // Collect response text and tool calls from this turn
+            const responseTexts: string[] = [];
+            const responseToolCalls: Array<{ name: string; type: string; arguments: string }> = [];
+
             for (const block of transformed.message.content) {
               if (block.type === 'tool_use') {
                 toolCallCount++;
                 debugLog(`[runner] [native-sdk] 🔧 Tool call: ${block.name}\n`);
+                responseToolCalls.push({
+                  name: block.name ?? 'unknown',
+                  type: 'function_call',
+                  arguments: JSON.stringify(block.input).substring(0, 500),
+                });
+              } else if (block.type === 'text' && block.text) {
+                textBlockCount++;
+                responseTexts.push(block.text);
+              }
+            }
 
-                // Emit a gen_ai.execute_tool span as a child of gen_ai.invoke_agent.
-                // withActiveSpan temporarily makes agentSpan the active span so
-                // the startSpan inside creates a proper child.
+            // Emit gen_ai.request span as a child of the agent span
+            Sentry.withActiveSpan(agentSpan, () => {
+              Sentry.startSpan(
+                {
+                  op: 'gen_ai.request',
+                  name: `request ${modelId}`,
+                  attributes: {
+                    'gen_ai.request.model': modelId,
+                    'gen_ai.operation.name': 'request',
+                    'gen_ai.request.messages': JSON.stringify(pendingRequestMessages),
+                    ...(responseTexts.length > 0
+                      ? { 'gen_ai.response.text': JSON.stringify(responseTexts.map(t => t.substring(0, 500))) }
+                      : {}),
+                    ...(responseToolCalls.length > 0
+                      ? { 'gen_ai.response.tool_calls': JSON.stringify(responseToolCalls) }
+                      : {}),
+                  },
+                },
+                () => {
+                  // Span marks the LLM request/response for this turn
+                }
+              );
+            });
+
+            // Reset pending messages — the next turn's input will be tool results
+            pendingRequestMessages = [];
+
+            // Emit gen_ai.execute_tool spans for each tool call in this turn
+            for (const block of transformed.message.content) {
+              if (block.type === 'tool_use') {
                 Sentry.withActiveSpan(agentSpan, () => {
                   Sentry.startSpan(
                     {
@@ -345,12 +397,23 @@ export function createNativeClaudeQuery(
                       },
                     },
                     () => {
-                      // Span created and ended — marks the tool invocation point
+                      // Span marks the tool invocation point
                     }
                   );
                 });
-              } else if (block.type === 'text') {
-                textBlockCount++;
+              }
+            }
+          }
+
+          // --- Accumulate tool results for the next gen_ai.request span ---
+          // 'user' messages contain tool_result blocks that feed the next LLM turn.
+          if (transformed.type === 'user' && transformed.message?.content) {
+            for (const block of transformed.message.content) {
+              if (block.type === 'tool_result') {
+                pendingRequestMessages.push({
+                  role: 'tool',
+                  content: (typeof block.content === 'string' ? block.content : JSON.stringify(block.content) ?? '').substring(0, 500),
+                });
               }
             }
           }
