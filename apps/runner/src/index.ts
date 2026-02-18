@@ -48,6 +48,7 @@ import { waitForPort } from "./lib/port-checker.js";
 import { createProjectScopedPermissionHandler } from "./lib/permissions/project-scoped-handler.js";
 import { hmrProxyManager } from "./lib/hmr-proxy-manager.js";
 import { ensureProjectSkills } from "./lib/skills.js";
+import { getPackageVersion } from "./cli/utils/version-info.js";
 import { 
   initRunnerLogger, 
   getLogger,
@@ -3280,6 +3281,10 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
 
       Sentry.logger.info('Runner connected to server', {
         runnerId: RUNNER_ID,
+        version: getPackageVersion(),
+        user: os.userInfo().username,
+        hostname: os.hostname(),
+        platform: os.platform(),
         serverUrl: WS_URL,
         workspace: WORKSPACE_ROOT,
       });
