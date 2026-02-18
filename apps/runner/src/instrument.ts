@@ -15,8 +15,11 @@ if (typeof Sentry.httpIntegration === "function") {
 
 log(`Total integrations configured: ${integrations.length}`);
 
+// Default DSN for Hatchway error tracking — users can override via SENTRY_DSN env var
+const DEFAULT_SENTRY_DSN = "https://94f02492541e36eaa9ebfa56c4c042d2@o4508130833793024.ingest.us.sentry.io/4510156711919616";
+
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  dsn: process.env.SENTRY_DSN || DEFAULT_SENTRY_DSN,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   integrations: integrations as any[],
   tracesSampleRate: 1.0,
