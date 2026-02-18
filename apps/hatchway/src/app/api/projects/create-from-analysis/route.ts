@@ -89,6 +89,15 @@ export async function POST(request: Request) {
 
     console.log(`[create-from-analysis] Project created: ${project.id}`);
 
+    Sentry.logger.info('Project created from analysis', {
+      projectId: project.id,
+      projectName: friendlyName,
+      userName: session?.user?.name ?? 'anonymous',
+      userId: userId ?? 'local',
+      framework: template?.framework ?? 'unknown',
+      runnerId: runnerId ?? 'unknown',
+    });
+
     // Persist initial user prompt as first chat message
     try {
       await db.insert(messages).values({

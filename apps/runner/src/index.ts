@@ -3277,6 +3277,12 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
       
       // Update logger connection status
       logger.setConnected(true);
+
+      Sentry.logger.info('Runner connected to server', {
+        runnerId: RUNNER_ID,
+        serverUrl: WS_URL,
+        workspace: WORKSPACE_ROOT,
+      });
       debugLog("Health check: ping/pong enabled, command timeout: 5 minutes");
       publishStatus();
       scheduleHeartbeat();

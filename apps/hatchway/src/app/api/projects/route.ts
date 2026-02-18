@@ -185,6 +185,14 @@ export async function POST(request: Request) {
 
     console.log(`✅ Project created: ${project.id}`);
 
+    Sentry.logger.info('Project created (fallback path)', {
+      projectId: project.id,
+      projectName: metadata.friendlyName,
+      userName: session?.user?.name ?? 'anonymous',
+      userId: userId ?? 'local',
+      browser: browserType,
+    });
+
     // Persist initial user prompt as first chat message
     try {
       await db.insert(messages).values({

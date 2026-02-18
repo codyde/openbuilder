@@ -17,6 +17,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as Sentry from '@sentry/node';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,6 +57,14 @@ export function getPlatformPluginDir(): string | null {
       process.stderr.write(`[skills] Platform plugin: ${_pluginDir} (${names.length} skills: [${names.join(', ')}])\n`);
     } else {
       process.stderr.write('[skills] Platform plugin directory not found\n');
+      Sentry.logger.error('Platform plugin directory not found — agent will run without core skills', {
+        candidatePaths: [
+          join(__dirname, 'skills', 'platform-plugin'),
+          join(__dirname, 'lib', 'skills', 'platform-plugin'),
+          join(__dirname, '..', 'src', 'lib', 'skills', 'platform-plugin'),
+        ].join(', '),
+        __dirname,
+      });
     }
   }
   return _pluginDir;

@@ -219,6 +219,13 @@ export function createNativeClaudeQuery(
       ? [{ type: 'local' as const, path: platformPluginDir }]
       : [];
 
+    if (platformPlugins.length === 0) {
+      Sentry.logger.warn('Agent starting without platform skills — degraded capabilities', {
+        model: modelId,
+        workingDirectory,
+      });
+    }
+
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
     if (hasImages) {
