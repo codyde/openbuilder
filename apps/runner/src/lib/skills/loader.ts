@@ -51,13 +51,12 @@ export function loadSkill(name: SkillName): string {
     return skillCache.get(name)!;
   }
 
-  // Try paths that work in dev (src/lib/skills/) and in bundled output (dist/)
-  // In dev: __dirname = src/lib/skills/ (file is right here)
+  // Skills are stored as .claude/skills/<name>/SKILL.md (SDK-native format).
+  // In dev: __dirname = src/lib/skills/
   // In rollup bundle: __dirname = dist/ (import.meta.url points to dist/index.js)
   const candidates = [
-    join(__dirname, `${name}.md`),                              // dev: src/lib/skills/{name}.md
-    join(__dirname, 'lib', 'skills', `${name}.md`),             // bundle: dist/lib/skills/{name}.md
-    join(__dirname, '..', 'src', 'lib', 'skills', `${name}.md`), // bundle fallback: src/lib/skills/{name}.md
+    join(__dirname, '.claude', 'skills', name, 'SKILL.md'),                  // dev
+    join(__dirname, 'lib', 'skills', '.claude', 'skills', name, 'SKILL.md'), // bundle
   ];
 
   for (const candidate of candidates) {

@@ -18,7 +18,7 @@ import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent
 import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createProjectScopedPermissionHandler } from './permissions/project-scoped-handler.js';
-import { provisionPlatformSkills } from './skills.js';
+import { getPlatformSkillsDir } from './skills.js';
 import {
   CLAUDE_SYSTEM_PROMPT,
   type ClaudeModelId,
@@ -213,10 +213,10 @@ export function createNativeClaudeQuery(
       mkdirSync(workingDirectory, { recursive: true });
     }
     
-    // Provision platform-level skills so the SDK discovers them on-demand.
-    // Skills are written to a temp directory and added via additionalDirectories.
-    const platformSkills = provisionPlatformSkills();
-    const skillDirectories = platformSkills ? [platformSkills.skillsDir] : [];
+    // Platform skills live within the runner at .claude/skills/<name>/SKILL.md.
+    // Pass the parent directory so the SDK discovers them via additionalDirectories.
+    const platformSkillsDir = getPlatformSkillsDir();
+    const skillDirectories = platformSkillsDir ? [platformSkillsDir] : [];
 
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
@@ -257,9 +257,16 @@ export function createNativeClaudeQuery(
       // See: https://github.com/anthropics/claude-code/issues/2970
       // See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/46
       abortController,
+      // Capture SDK internal stderr to debug skill discovery
+      stderr: (data: string) => {
+        if (data.includes('skill') || data.includes('Skill') || data.includes('SKILL')) {
+          process.stderr.write(`[native-sdk:stderr] ${data}\n`);
+        }
+      },
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
+    debugLog(`[runner] [native-sdk] additionalDirectories: ${JSON.stringify([workingDirectory, ...skillDirectories])}\n`);
 
     let messageCount = 0;
     let toolCallCount = 0;
@@ -288,6 +295,13 @@ export function createNativeClaudeQuery(
           }
 
           yield transformed;
+        }
+
+        // Log system init message to verify skill discovery
+        if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
+          const initMsg = sdkMessage as { skills?: string[]; tools?: string[]; slash_commands?: string[] };
+          process.stderr.write(`[native-sdk] SDK init - skills: ${JSON.stringify(initMsg.skills ?? [])}\n`);
+          process.stderr.write(`[native-sdk] SDK init - tools: ${(initMsg.tools ?? []).length} tools loaded\n`);
         }
 
         // Log result messages
