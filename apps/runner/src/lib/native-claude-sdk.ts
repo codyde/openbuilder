@@ -288,35 +288,27 @@ export function createNativeClaudeQuery(
     let toolCallCount = 0;
     let textBlockCount = 0;
 
-    // Create the gen_ai.invoke_agent span using startSpanManual.
+    // Create the gen_ai.invoke_agent span as a child of the current active span.
     //
-    // Why startSpanManual and not startSpan?
-    // startSpan() takes a callback and ends the span when the callback returns.
-    // But this is an async generator — we can't yield from inside a callback.
-    // startSpanManual() makes the span active on the current scope AND gives us
-    // a handle to end it ourselves in the finally block.
+    // We use startInactiveSpan because this is an async generator — we can't use
+    // startSpan/startSpanManual (both require a callback, and yields can't cross
+    // callback boundaries). startInactiveSpan creates a span that inherits the
+    // parent from the current active span (build.runner, restored by engine.ts
+    // via Sentry.withActiveSpan).
     //
-    // Why this works now (it didn't before):
-    // engine.ts captures the parent build.runner span before creating the
-    // ReadableStream, then restores it via Sentry.withActiveSpan() inside the
-    // stream's start() callback. So when this generator runs, the build.runner
-    // span is the active parent, and our gen_ai.invoke_agent becomes its child.
-    // Tool spans created with startSpan() inside the loop become children of
-    // gen_ai.invoke_agent because it's the active span at that point.
-    const agentSpan = Sentry.startSpanManual(
-      {
-        op: 'gen_ai.invoke_agent',
-        name: `Claude Agent (${modelId})`,
-        attributes: {
-          'gen_ai.agent.name': 'hatchway-builder',
-          'gen_ai.request.model': modelId,
-          'gen_ai.agent.input': finalPrompt.substring(0, 500),
-          'gen_ai.system_prompt.length': appendedSystemPrompt.length,
-          'gen_ai.agent.available_tools': JSON.stringify(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']),
-        },
+    // For tool spans, we use Sentry.withActiveSpan(agentSpan, ...) to temporarily
+    // make the agent span active so tool spans become its children.
+    const agentSpan = Sentry.startInactiveSpan({
+      op: 'gen_ai.invoke_agent',
+      name: `Claude Agent (${modelId})`,
+      attributes: {
+        'gen_ai.agent.name': 'hatchway-builder',
+        'gen_ai.request.model': modelId,
+        'gen_ai.agent.input': finalPrompt.substring(0, 500),
+        'gen_ai.system_prompt.length': appendedSystemPrompt.length,
+        'gen_ai.agent.available_tools': JSON.stringify(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']),
       },
-      (span) => span // Return the span so we control its lifecycle
-    );
+    });
 
     try {
       // Stream messages directly from the SDK
@@ -335,24 +327,24 @@ export function createNativeClaudeQuery(
                 debugLog(`[runner] [native-sdk] 🔧 Tool call: ${block.name}\n`);
 
                 // Emit a gen_ai.execute_tool span as a child of gen_ai.invoke_agent.
-                // Using startSpan (active) with an empty callback — the span is created,
-                // becomes briefly active, records the tool invocation, and ends when
-                // the callback returns. This gives Sentry the tool call event with
-                // proper parent-child nesting.
-                Sentry.startSpan(
-                  {
-                    op: 'gen_ai.execute_tool',
-                    name: `Tool: ${block.name}`,
-                    attributes: {
-                      'gen_ai.tool.name': block.name,
-                      'gen_ai.tool.call_id': block.id,
-                      'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
+                // withActiveSpan temporarily makes agentSpan the active span so
+                // the startSpan inside creates a proper child.
+                Sentry.withActiveSpan(agentSpan, () => {
+                  Sentry.startSpan(
+                    {
+                      op: 'gen_ai.execute_tool',
+                      name: `Tool: ${block.name}`,
+                      attributes: {
+                        'gen_ai.tool.name': block.name,
+                        'gen_ai.tool.call_id': block.id,
+                        'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
+                      },
                     },
-                  },
-                  () => {
-                    // Span created and ended — marks the tool invocation point
-                  }
-                );
+                    () => {
+                      // Span created and ended — marks the tool invocation point
+                    }
+                  );
+                });
               } else if (block.type === 'text') {
                 textBlockCount++;
               }
@@ -379,6 +371,12 @@ export function createNativeClaudeQuery(
             process.stderr.write(`[native-sdk] SDK init — skills: [${discoveredSkills.join(', ')}] (${discoveredSkills.length})\n`);
             process.stderr.write(`[native-sdk] SDK init — plugins: ${JSON.stringify(loadedPlugins)}\n`);
             process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
+          }
+
+          // Set discovered skills on the agent span
+          if (agentSpan) {
+            agentSpan.setAttribute('gen_ai.agent.skills', discoveredSkills.join(', '));
+            agentSpan.setAttribute('gen_ai.agent.skill_count', discoveredSkills.length);
           }
 
           if (discoveredSkills.length > 0) {
