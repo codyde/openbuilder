@@ -536,7 +536,7 @@ function createCodexQuery(): BuildQueryFn {
     // Note: Codex SDK doesn't have system prompt configuration, so we prepend it to the user prompt
     const combinedPrompt = `${systemParts.join("\n\n")}\n\n${prompt}`;
 
-    fileLog.info('Using CODEX_SYSTEM_PROMPT (TodoWrite references replaced with JSON code blocks)');
+    fileLog.info('Using CODEX_SYSTEM_PROMPT (lean base) + modular skills from orchestrator');
 
     // Resume existing thread for enhancements, start new for initial builds
     let thread;
@@ -2275,8 +2275,8 @@ export async function startRunner(options: RunnerOptions = {}) {
         const claudeModelFromPayload = command.payload?.claudeModel;
         const model = agent === 'claude-code' && 
           (claudeModelFromPayload === 'claude-haiku-4-5' || 
-           claudeModelFromPayload === 'claude-sonnet-4-5' || 
-           claudeModelFromPayload === 'claude-opus-4-5')
+           claudeModelFromPayload === 'claude-sonnet-4-6' || 
+           claudeModelFromPayload === 'claude-opus-4-6')
           ? claudeModelFromPayload
           : DEFAULT_CLAUDE_MODEL_ID;
 
@@ -2326,8 +2326,8 @@ export async function startRunner(options: RunnerOptions = {}) {
           const claudeModel: ClaudeModelId =
             agent === "claude-code" &&
             (command.payload.claudeModel === "claude-haiku-4-5" ||
-              command.payload.claudeModel === "claude-sonnet-4-5" ||
-              command.payload.claudeModel === "claude-opus-4-5")
+              command.payload.claudeModel === "claude-sonnet-4-6" ||
+              command.payload.claudeModel === "claude-opus-4-6")
               ? command.payload.claudeModel
               : DEFAULT_CLAUDE_MODEL_ID;
           
@@ -3277,6 +3277,12 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
       
       // Update logger connection status
       logger.setConnected(true);
+
+      Sentry.logger.info('Runner connected to server', {
+        runnerId: RUNNER_ID,
+        serverUrl: WS_URL,
+        workspace: WORKSPACE_ROOT,
+      });
       debugLog("Health check: ping/pong enabled, command timeout: 5 minutes");
       publishStatus();
       scheduleHeartbeat();
@@ -3362,10 +3368,10 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
                       const agent = command.payload.agent ?? 'claude-code';
                       const claudeModel = agent === 'claude-code' && 
                         (command.payload.claudeModel === 'claude-haiku-4-5' || 
-                         command.payload.claudeModel === 'claude-sonnet-4-5' || 
-                         command.payload.claudeModel === 'claude-opus-4-5')
+                         command.payload.claudeModel === 'claude-sonnet-4-6' || 
+                         command.payload.claudeModel === 'claude-opus-4-6')
                         ? command.payload.claudeModel
-                        : 'claude-sonnet-4-5';
+                        : 'claude-sonnet-4-6';
                       
                       Sentry.metrics.count('runner.build.started', 1, {
                         attributes: {
@@ -3411,10 +3417,10 @@ Write a brief, professional summary (1-3 sentences) describing what was accompli
                   const agent = command.payload.agent ?? 'claude-code';
                   const claudeModel = agent === 'claude-code' && 
                     (command.payload.claudeModel === 'claude-haiku-4-5' || 
-                     command.payload.claudeModel === 'claude-sonnet-4-5' || 
-                     command.payload.claudeModel === 'claude-opus-4-5')
+                     command.payload.claudeModel === 'claude-sonnet-4-6' || 
+                     command.payload.claudeModel === 'claude-opus-4-6')
                     ? command.payload.claudeModel
-                    : 'claude-sonnet-4-5';
+                    : 'claude-sonnet-4-6';
                   
                   Sentry.metrics.count('runner.build.started', 1, {
                     attributes: {

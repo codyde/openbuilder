@@ -18,7 +18,7 @@ import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent
 import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createProjectScopedPermissionHandler } from './permissions/project-scoped-handler.js';
-import { ensureProjectSkills } from './skills.js';
+import { getPlatformPluginDir } from './skills.js';
 import {
   CLAUDE_SYSTEM_PROMPT,
   type ClaudeModelId,
@@ -77,7 +77,7 @@ function transformSDKMessage(sdkMessage: SDKMessage): TransformedMessage | null 
         type: 'assistant',
         message: {
           id: sdkMessage.uuid || `msg-${Date.now()}`,
-          content: sdkMessage.message.content.map((block) => {
+          content: sdkMessage.message.content.map((block: { type: string; text?: string; id?: string; name?: string; input?: unknown; thinking?: string }) => {
             if (block.type === 'text') {
               return { type: 'text', text: block.text };
             } else if (block.type === 'tool_use') {
@@ -213,8 +213,18 @@ export function createNativeClaudeQuery(
       mkdirSync(workingDirectory, { recursive: true });
     }
     
-    // Ensure project has skills copied from bundled skills
-    ensureProjectSkills(workingDirectory);
+    // Platform skills are packaged as a local plugin for SDK discovery.
+    const platformPluginDir = getPlatformPluginDir();
+    const platformPlugins = platformPluginDir
+      ? [{ type: 'local' as const, path: platformPluginDir }]
+      : [];
+
+    if (platformPlugins.length === 0) {
+      Sentry.logger.warn('Agent starting without platform skills — degraded capabilities', {
+        model: modelId,
+        workingDirectory,
+      });
+    }
 
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
@@ -239,12 +249,15 @@ export function createNativeClaudeQuery(
       allowDangerouslySkipPermissions: true, // Required for bypassPermissions
       maxTurns: 100,
       additionalDirectories: [workingDirectory],
+      plugins: platformPlugins,
       canUseTool: createProjectScopedPermissionHandler(workingDirectory),
       includePartialMessages: false, // We don't need streaming deltas
       settingSources: ['user', 'project'],
       env: {
         ...process.env,
         CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? '64000',
+        // Enable SDK debug logging for skill discovery diagnostics
+        ...(process.env.DEBUG_SKILLS === '1' ? { DEBUG_CLAUDE_AGENT_SDK: '1' } : {}),
       },
       // Use preset tools from Claude Code
       tools: { type: 'preset', preset: 'claude_code' },
@@ -255,9 +268,17 @@ export function createNativeClaudeQuery(
       // See: https://github.com/anthropics/claude-code/issues/2970
       // See: https://github.com/anthropics/claude-agent-sdk-typescript/issues/46
       abortController,
+      // Capture SDK internal stderr to debug skill discovery
+      stderr: (data: string) => {
+        // Log all skill-related and add-dir related output
+        if (data.toLowerCase().includes('skill') || data.includes('add-dir') || data.includes('additional')) {
+          process.stderr.write(`[native-sdk:stderr] ${data}\n`);
+        }
+      },
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
+    process.stderr.write(`[native-sdk] plugins: ${JSON.stringify(platformPlugins.map(p => p.path))}\n`);
 
     let messageCount = 0;
     let toolCallCount = 0;
@@ -286,6 +307,13 @@ export function createNativeClaudeQuery(
           }
 
           yield transformed;
+        }
+
+        // Log system init message to verify skill discovery
+        if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
+          const initMsg = sdkMessage as { skills?: string[]; tools?: string[]; slash_commands?: string[] };
+          process.stderr.write(`[native-sdk] SDK init - skills: ${JSON.stringify(initMsg.skills ?? [])}\n`);
+          process.stderr.write(`[native-sdk] SDK init - tools: ${(initMsg.tools ?? []).length} tools loaded\n`);
         }
 
         // Log result messages

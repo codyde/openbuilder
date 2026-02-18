@@ -14,6 +14,7 @@ import { resolveAgentStrategy, type AgentStrategyContext } from '@hatchway/agent
 import { buildLogger } from '@hatchway/agent-core/lib/logging/build-logger';
 import type { DesignPreferences } from '@hatchway/agent-core/types/design';
 import type { AppliedTag } from '@hatchway/agent-core/types/tags';
+import { composeSkills } from './skills/loader.js';
 
 export interface MessagePart {
   type: string;
@@ -390,8 +391,20 @@ export async function orchestrateBuild(context: BuildContext): Promise<Orchestra
     conversationHistoryCount: conversationHistory?.length || 0,
   });
 
+  // For claude-code: platform skills are provisioned via the SDK's native skill
+  // discovery (additionalDirectories + skills option). The SDK loads descriptions
+  // into context and full content on-demand. No system prompt injection needed.
+  // For other agents (codex, opencode, droid): skills are injected into the system prompt.
+  const hasDesignTags = !!(tags && tags.some(t => t.key === 'brand' || t.key === 'framework'));
+  const useNativeSkills = agent === 'claude-code';
+  const skillSections = useNativeSkills ? [] : composeSkills({
+    agentId: agent,
+    isNewProject,
+    hasDesignTags,
+  });
+
   const systemPromptSections = await strategy.buildSystemPromptSections(strategyContext);
-  const systemPrompt = systemPromptSections.join('\n\n');
+  const systemPrompt = [...skillSections, ...systemPromptSections].join('\n\n');
 
   buildLogger.orchestrator.systemPromptGenerated(systemPrompt.length);
   

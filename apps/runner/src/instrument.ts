@@ -20,6 +20,7 @@ Sentry.init({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   integrations: integrations as any[],
   tracesSampleRate: 1.0,
+  enableLogs: true,
   debug: false,
   sendDefaultPii: false,
   // Configure trace propagation (Runner → Broker communication)

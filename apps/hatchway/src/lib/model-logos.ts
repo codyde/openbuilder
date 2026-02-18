@@ -4,8 +4,8 @@
  */
 export function getModelLogo(modelValue: string): string | null {
   const logoMap: Record<string, string> = {
-    'claude-sonnet-4-5': '/claude.png',
-    'claude-opus-4-5': '/claude.png',
+    'claude-sonnet-4-6': '/claude.png',
+    'claude-opus-4-6': '/claude.png',
     'claude-haiku-4-5': '/claude.png',
     'gpt-5-codex': '/openai.png',
     'gpt-5.2-codex': '/openai.png',
