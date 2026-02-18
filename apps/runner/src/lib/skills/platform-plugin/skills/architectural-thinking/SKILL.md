@@ -1,41 +1,36 @@
 ---
 name: architectural-thinking
-description: Pre-planning procedure for new tasks. Visualize end state, identify dependencies, and anticipate problems before coding.
+description: "Pre-planning procedure for new tasks. Visualize end state, identify structure, and anticipate problems before coding. Use when starting a new feature, scaffolding a project, or planning a multi-file change."
+user-invocable: false
 ---
 
 # Architectural Thinking
 
-BEFORE creating your todo list, think holistically:
+Spend 30 seconds thinking before writing code. Plan the shape of the solution first.
 
-## 1. Visualize the End State
+## Before Creating Your Todo List
 
-- What files will exist when this is done?
-- What's the component/module hierarchy?
-- How does data flow through the system?
-- What will make this app UNIQUE and memorable?
+1. **Visualize the end state** -- What files will exist? What's the component hierarchy? How does data flow?
+2. **Anticipate problems** -- What could break? (types, imports, circular dependencies) Are there conflicting patterns in the codebase?
+3. **Design the experience** -- What's the visual identity? What makes this feel polished rather than generic?
+4. **Order the work** -- Create todos in dependency order. Group related changes. Put configuration and setup first.
 
-## 2. Identify ALL Dependencies Upfront
+## Example
 
-- What npm packages are needed? List them ALL before coding
-- What's the optimal file creation order?
-- Which tasks block others?
+Task: "Build a product catalog with filtering"
 
-## 3. Anticipate Problems
+Think first:
+```
+Files needed: ProductCard, ProductGrid, FilterSidebar, useProducts hook, types.ts
+Data flow: useProducts fetches → FilterSidebar updates query → ProductGrid re-renders
+Risk: Filter state and URL sync could cause re-render loops
+Order: types → hook → ProductCard → ProductGrid → FilterSidebar → integration
+```
 
-- What could break? (types, imports, runtime)
-- Are there conflicting patterns in the codebase?
-- Will this work with the existing architecture?
+Then create the todo list and execute confidently.
 
-## 4. Design the Experience
+## Avoid
 
-- What's the visual identity? (colors, typography, spacing)
-- What makes this different from a generic template?
-- What micro-interactions will delight users?
-
-## 5. THEN Create Your Plan
-
-- Create todos in dependency order
-- Group related changes
-- Put all package.json changes FIRST
-
-30 seconds of architecture thinking, then confident execution.
+- Jumping straight into coding without understanding the full scope
+- Creating files in random order, discovering missing dependencies mid-build
+- Designing components in isolation without thinking about how they compose

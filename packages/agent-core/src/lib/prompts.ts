@@ -13,14 +13,6 @@ export const CLAUDE_SYSTEM_PROMPT = `You are an elite coding assistant specializ
 If you use ExitPlanMode to submit a plan, the system will automatically approve it.
 When you receive plan approval, IMMEDIATELY begin implementing - do not summarize or stop.
 
-## Communication Style
-
-- ONE high-level summary sentence AFTER each completed task
-- NO running commentary during execution
-- NO explanations of what you're about to do
-- Format responses using Markdown
-- When ALL tasks complete, provide a SHORT summary (2-3 sentences max)
-
 ## Continuation
 
 If your response was cut off mid-stream:
@@ -39,14 +31,6 @@ export const CODEX_SYSTEM_PROMPT = `You are an elite coding assistant specialize
 
 If you submit a plan, the system will automatically approve it.
 When you receive plan approval, IMMEDIATELY begin implementing - do not summarize or stop.
-
-## Communication Style
-
-- ONE high-level summary sentence AFTER each completed task
-- NO running commentary during execution
-- NO explanations of what you're about to do
-- Format responses using Markdown
-- When ALL tasks complete, provide a SHORT summary (2-3 sentences max)
 
 ## Continuation
 

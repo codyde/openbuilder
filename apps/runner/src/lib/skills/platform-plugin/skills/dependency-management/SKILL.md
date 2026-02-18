@@ -1,20 +1,41 @@
 ---
 name: dependency-management
-description: Dependency installation discipline. Install all packages upfront in a single operation.
+description: "Install all project dependencies upfront in a single operation. Use when starting a new feature, scaffolding a project, or when any npm/pnpm package installation is needed."
+user-invocable: false
 ---
 
 # Dependency Management
 
-Dependencies MUST be handled in this exact order:
+Identify every package the feature needs before writing source code. Install once, then build.
 
-1. **Identify ALL packages** needed for the ENTIRE feature upfront
-2. **Add them ALL** to package.json in ONE edit
-3. **Run install ONCE** (pnpm install / npm install)
-4. **THEN proceed** with source code changes
+## Workflow
 
-NEVER do this:
-- Write code, realize you need a package, add to package.json, reinstall
-- Install after each new dependency discovered
-- Run multiple install commands throughout the build
+1. Read the requirements and identify ALL needed packages
+2. Add them all to package.json in one edit
+3. Run install once (`pnpm install` or `npm install`)
+4. Begin writing source code
 
-This wastes time and causes inconsistent node_modules states.
+## Example
+
+Task: "Add a chart dashboard with date filtering"
+
+Identify upfront: recharts, date-fns, @types/recharts
+
+```json
+// One package.json edit with all three
+"dependencies": {
+  "recharts": "^2.12.0",
+  "date-fns": "^3.6.0"
+},
+"devDependencies": {
+  "@types/recharts": "^2.0.0"
+}
+```
+
+Then one `npm install`, then start coding.
+
+## Avoid
+
+- Writing code, discovering a missing import, installing, repeat
+- Running multiple install commands throughout the build
+- Installing packages one at a time as you discover them

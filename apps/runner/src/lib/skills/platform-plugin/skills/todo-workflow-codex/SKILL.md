@@ -1,36 +1,53 @@
 ---
 name: todo-workflow-codex
-description: Task tracking via JSON code blocks for Codex agent. Replaces TodoWrite tool with inline JSON.
+description: "Task tracking via inline JSON code blocks for the Codex agent. Use when executing any multi-step task or build workflow."
+user-invocable: false
 ---
 
 # Task Tracking via JSON Code Blocks
 
-Track your work by including JSON code blocks in your responses.
+Track progress by including JSON code blocks in your responses. The system extracts them automatically.
 
-**Format:**
+## Format
+
 ```json
 {"todos":[
-  {"content":"Task description","status":"completed","activeForm":"Past tense of task"},
+  {"content":"Task description","status":"completed","activeForm":"Past tense"},
   {"content":"Current task","status":"in_progress","activeForm":"Present continuous"},
   {"content":"Future task","status":"pending","activeForm":"Will do"}
 ]}
 ```
 
-**When to include:**
-- At the start: Include your initial task breakdown
-- After each major step: Update with new statuses
-- At the end: All tasks marked "completed"
+## When to Include
 
-**Statuses:** "pending" | "in_progress" | "completed"
+- At the start: initial task breakdown
+- After each major step: updated statuses
+- At the end: all tasks completed
 
-Create as many tasks as needed for the request (3-15+ tasks based on complexity).
+## Example
 
-IMPORTANT: This is NOT a tool to call, NOT a command to run, NOT something to install.
-Simply include the JSON code block in your message. The system automatically extracts it.
+Task: "Add a contact form"
+
+Response 1:
+```json
+{"todos":[
+  {"content":"Create form component with validation","status":"in_progress","activeForm":"Creating form component"},
+  {"content":"Add API route for form submission","status":"pending","activeForm":"Will add API route"},
+  {"content":"Style form with project design system","status":"pending","activeForm":"Will style form"}
+]}
+```
+
+Response 2 (after completing form):
+```json
+{"todos":[
+  {"content":"Create form component with validation","status":"completed","activeForm":"Created form component"},
+  {"content":"Add API route for form submission","status":"in_progress","activeForm":"Adding API route"},
+  {"content":"Style form with project design system","status":"pending","activeForm":"Will style form"}
+]}
+```
+
+This is NOT a tool call -- simply include the JSON block in your message text.
 
 ## Autonomous Execution
 
-Keep working until the task is 100% complete. Do NOT stop to ask for user approval unless:
-- You need critical information only the user can provide
-- You encounter an unrecoverable error
-- The user's request is ambiguous
+Keep working until 100% complete. Do not pause to ask "Should I continue?" unless you need information only the user can provide or encounter an unrecoverable error.

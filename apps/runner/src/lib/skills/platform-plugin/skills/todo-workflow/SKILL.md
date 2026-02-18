@@ -1,42 +1,44 @@
 ---
 name: todo-workflow
-description: Mandatory step-by-step todo tracking workflow using TodoWrite tool. Applies to all tasks including follow-ups.
+description: "Step-by-step task tracking using the TodoWrite tool. Use when executing any multi-step task, follow-up request, or build workflow."
+user-invocable: false
 ---
 
-# Todo Execution Workflow
+# Todo Workflow
 
-## Mandatory TodoWrite Usage
+The Hatchway UI tracks progress via TodoWrite. Without it, users see nothing happening.
 
-You MUST call TodoWrite to update status AFTER COMPLETING EACH INDIVIDUAL TODO.
+## Workflow
 
-DO NOT batch todos into a single TodoWrite call.
-DO NOT work on multiple todos before updating.
+For each todo:
 
-**Workflow for each todo:**
+1. Mark it `in_progress` via TodoWrite
+2. Do the work
+3. Mark it `completed` via TodoWrite
+4. Write one sentence about what you did
+5. Move to the next todo
 
-1. **Start**: TodoWrite({ todos: [{ ..., status: "in_progress" }] })
-2. **Work**: Execute tools to complete that ONE todo
-3. **Complete**: TodoWrite({ todos: [{ ..., status: "completed" }] })
-4. **Summary**: 1 SHORT sentence about what you accomplished
-5. **Next**: Mark next todo "in_progress" and repeat
+Update after every single todo -- never batch multiple completions into one call.
 
-If you have 7 todos, call TodoWrite AT LEAST 14 times (start + complete for each).
+## Follow-ups
 
-## Follow-up Requests
+Even simple follow-up requests get at least one todo. Create it, mark in_progress, do the work, mark completed.
 
-Even for simple follow-up changes, you MUST use TodoWrite:
+## Example
 
-1. Create at least one todo before making any edits
-2. Mark it "in_progress", do the work, then mark it "completed"
-3. Add the summary todo at the end
+Task: "Add a dark mode toggle"
 
-The UI tracks progress via todos - without them, users see nothing happening.
+```
+TodoWrite → [{content: "Add theme context provider", status: "in_progress"}, ...]
+  → Create ThemeContext.tsx
+TodoWrite → [{content: "Add theme context provider", status: "completed"}, ...]
+  Added ThemeProvider with light/dark state and localStorage persistence.
+TodoWrite → [{content: "Add toggle component to header", status: "in_progress"}, ...]
+  → Create DarkModeToggle.tsx, add to Header
+TodoWrite → [{content: "Add toggle component to header", status: "completed"}, ...]
+  Added moon/sun icon toggle to the header nav bar.
+```
 
 ## Autonomous Execution
 
-Keep working until the task is 100% complete. Do NOT stop to ask for user approval unless:
-- You need critical information only the user can provide
-- You encounter an unrecoverable error
-- The user's request is ambiguous
-
-NEVER pause mid-task saying "Should I continue?" or "Would you like me to...?"
+Keep working until 100% complete. Do not pause to ask "Should I continue?" unless you need information only the user can provide or encounter an unrecoverable error.

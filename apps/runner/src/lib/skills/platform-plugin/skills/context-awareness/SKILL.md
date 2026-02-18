@@ -1,36 +1,36 @@
 ---
 name: context-awareness
-description: Read-before-write discipline. Search patterns and understand context before modifying files.
+description: "Read-before-write discipline. Search for patterns and understand existing code before modifying files. Use when editing existing files, adding features to an existing codebase, or creating new components."
+user-invocable: false
 ---
 
 # Context Awareness
 
-BEFORE modifying ANY existing file:
+Understand the codebase before changing it. Read first, write second.
 
-## 1. Search for Patterns
+## Before Modifying Any File
 
-Use Grep to find similar code in the codebase.
-- Before adding a new component, search for existing components
-- Match naming conventions, import patterns, and structure
+1. **Search** -- Use Grep to find similar patterns (naming conventions, import style, component structure)
+2. **Read** -- Open related files to understand data flow and dependencies
+3. **Assess** -- Will this change break imports elsewhere? Is there an existing utility to reuse?
+4. **Change** -- Make targeted edits that match existing code style
 
-## 2. Read Related Files
+## Example
 
-Use Read to understand dependencies.
-- Check imports and exports
-- Understand data flow
-- See how similar features are implemented
+Task: "Add a user avatar component"
 
-## 3. Understand Impact
+Before creating `UserAvatar.tsx`:
+```
+Grep: "Avatar" → find existing avatar usage
+Grep: "component" in src/components/ → see naming pattern (PascalCase folders? flat files?)
+Read: src/components/Button.tsx → see how components are structured (props interface, export style)
+Read: src/lib/utils.ts → check for existing image/URL helpers
+```
 
-- Will this change break imports elsewhere?
-- Does this follow the project's architecture?
-- Are there existing utilities to reuse?
+Then create `UserAvatar.tsx` matching the patterns found.
 
-## 4. Make Targeted Changes
+## Never
 
-- Change only what needs changing
-- Preserve working code
-- Match existing code style
-
-NEVER blindly modify files without understanding surrounding context.
-NEVER create duplicate utilities that already exist in the codebase.
+- Blindly modify files without reading surrounding context
+- Create a new utility when one already exists in the codebase
+- Ignore the project's established patterns in favor of your own preferences

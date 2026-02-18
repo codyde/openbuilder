@@ -3,13 +3,12 @@
  *
  * Skills are modular pieces of procedural knowledge that get conditionally
  * composed into the system prompt based on agent type and project context.
- * This implements progressive disclosure to reduce prompt size.
+ * This is the fallback path for non-Claude agents (codex, opencode, droid).
+ * Claude agents use SDK-native plugin discovery instead.
  */
 
 import type { AgentId } from '@hatchway/agent-core/types/agent';
 
-// Skill content is imported as static strings so rollup can bundle them.
-// The source .md files in this directory are the canonical source of truth.
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,46 +16,31 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/**
- * Available skill names. Each corresponds to a .md file in the skills directory.
- */
 export type SkillName =
   | 'todo-workflow'
   | 'todo-workflow-codex'
+  | 'communication-style'
   | 'dependency-management'
-  | 'design-system'
+  | 'design-excellence'
   | 'template-originality'
-  | 'error-recovery'
-  | 'testing-verification'
+  | 'build-verification'
   | 'context-awareness'
-  | 'architectural-thinking'
-  | 'code-quality';
+  | 'architectural-thinking';
 
-// Cache loaded skill content
 const skillCache = new Map<string, string>();
 
-/**
- * Strip YAML frontmatter from a markdown string.
- */
 function stripFrontmatter(raw: string): string {
   return raw.replace(/^---\n[\s\S]*?\n---\n*/, '').trim();
 }
 
-/**
- * Load a skill by name. Tries multiple directory layouts to work in both
- * development (src/lib/skills/) and production (dist/) modes.
- */
 export function loadSkill(name: SkillName): string {
   if (skillCache.has(name)) {
     return skillCache.get(name)!;
   }
 
-  // Skills are stored as platform-plugin/skills/<name>/SKILL.md (plugin format).
-  // In dev: __dirname = src/lib/skills/
-  // In rollup bundle: __dirname = dist/ (import.meta.url points to dist/index.js)
   const candidates = [
-    join(__dirname, 'platform-plugin', 'skills', name, 'SKILL.md'),                  // dev
-    join(__dirname, 'lib', 'skills', 'platform-plugin', 'skills', name, 'SKILL.md'), // bundle
+    join(__dirname, 'platform-plugin', 'skills', name, 'SKILL.md'),
+    join(__dirname, 'lib', 'skills', 'platform-plugin', 'skills', name, 'SKILL.md'),
   ];
 
   for (const candidate of candidates) {
@@ -70,24 +54,16 @@ export function loadSkill(name: SkillName): string {
     }
   }
 
-  // If no file found, return a descriptive fallback
   process.stderr.write(`[skills] Could not load skill "${name}" from any path. Searched: ${candidates.join(', ')}\n`);
   return `[Skill "${name}" not found]`;
 }
 
-/**
- * Context for deciding which skills to load.
- */
 export interface SkillContext {
   agentId: AgentId;
   isNewProject: boolean;
   hasDesignTags: boolean;
 }
 
-/**
- * Compose the full set of skill sections for a given agent and context.
- * Returns an array of skill content strings ready to join into a system prompt.
- */
 export function composeSkills(context: SkillContext): string[] {
   const sections: string[] = [];
   const loaded: SkillName[] = [];
@@ -97,43 +73,38 @@ export function composeSkills(context: SkillContext): string[] {
     loaded.push(name);
   }
 
-  // Todo workflow: agent-specific variant
+  // Agent-specific todo tracking
   if (context.agentId === 'openai-codex') {
     add('todo-workflow-codex');
   } else {
     add('todo-workflow');
   }
 
-  // Always load: core behavioral skills
+  // Always: communication and core discipline
+  add('communication-style');
   add('context-awareness');
   add('dependency-management');
-  add('code-quality');
 
-  // New project skills (progressive disclosure - skip for existing projects)
+  // New project skills
   if (context.isNewProject) {
     add('architectural-thinking');
     add('template-originality');
   }
 
-  // Design skills: only for new projects or when design tags are present
+  // Design skills: new projects or when design tags present
   if (context.isNewProject || context.hasDesignTags) {
-    add('design-system');
+    add('design-excellence');
   }
 
-  // Always load: error handling and verification
-  add('error-recovery');
-  add('testing-verification');
+  // Always: build verification
+  add('build-verification');
 
   const totalChars = sections.reduce((sum, s) => sum + s.length, 0);
-  // Use process.stderr.write to bypass file-logger's console.log override
   process.stderr.write(`[skills] Composed ${loaded.length} skills (${totalChars} chars) for agent=${context.agentId} isNew=${context.isNewProject} hasDesign=${context.hasDesignTags}: [${loaded.join(', ')}]\n`);
 
   return sections;
 }
 
-/**
- * Clear the skill cache (useful for testing).
- */
 export function clearSkillCache(): void {
   skillCache.clear();
 }
