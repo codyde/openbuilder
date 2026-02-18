@@ -24,7 +24,10 @@ const PACKAGE_FILES = [
   'package.json',
   'apps/runner/package.json',
   'apps/hatchway/package.json',
+  'apps/opencode-service/package.json',
   'packages/agent-core/package.json',
+  'packages/runner/package.json',
+  'packages/opencode-client/package.json',
 ];
 
 /**
