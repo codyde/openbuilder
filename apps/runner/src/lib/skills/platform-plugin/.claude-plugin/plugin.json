@@ -1,0 +1,5 @@
+{
+  "name": "hatchway-platform",
+  "version": "1.0.0",
+  "description": "Hatchway platform-level skills for building projects. Provides procedural knowledge for code quality, dependency management, design systems, error recovery, testing, and architectural thinking."
+}

@@ -51,12 +51,12 @@ export function loadSkill(name: SkillName): string {
     return skillCache.get(name)!;
   }
 
-  // Skills are stored as .claude/skills/<name>/SKILL.md (SDK-native format).
+  // Skills are stored as platform-plugin/skills/<name>/SKILL.md (plugin format).
   // In dev: __dirname = src/lib/skills/
   // In rollup bundle: __dirname = dist/ (import.meta.url points to dist/index.js)
   const candidates = [
-    join(__dirname, '.claude', 'skills', name, 'SKILL.md'),                  // dev
-    join(__dirname, 'lib', 'skills', '.claude', 'skills', name, 'SKILL.md'), // bundle
+    join(__dirname, 'platform-plugin', 'skills', name, 'SKILL.md'),                  // dev
+    join(__dirname, 'lib', 'skills', 'platform-plugin', 'skills', name, 'SKILL.md'), // bundle
   ];
 
   for (const candidate of candidates) {

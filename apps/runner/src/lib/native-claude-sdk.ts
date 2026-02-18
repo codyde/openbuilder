@@ -18,7 +18,7 @@ import { query, type SDKMessage, type Options } from '@anthropic-ai/claude-agent
 import * as Sentry from '@sentry/node';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createProjectScopedPermissionHandler } from './permissions/project-scoped-handler.js';
-import { getPlatformSkillsDir } from './skills.js';
+import { getPlatformPluginDir } from './skills.js';
 import {
   CLAUDE_SYSTEM_PROMPT,
   type ClaudeModelId,
@@ -213,10 +213,11 @@ export function createNativeClaudeQuery(
       mkdirSync(workingDirectory, { recursive: true });
     }
     
-    // Platform skills live within the runner at .claude/skills/<name>/SKILL.md.
-    // Pass the parent directory so the SDK discovers them via additionalDirectories.
-    const platformSkillsDir = getPlatformSkillsDir();
-    const skillDirectories = platformSkillsDir ? [platformSkillsDir] : [];
+    // Platform skills are packaged as a local plugin for SDK discovery.
+    const platformPluginDir = getPlatformPluginDir();
+    const platformPlugins = platformPluginDir
+      ? [{ type: 'local' as const, path: platformPluginDir }]
+      : [];
 
     // Check for multi-modal content
     const hasImages = messageParts?.some(p => p.type === 'image');
@@ -240,7 +241,8 @@ export function createNativeClaudeQuery(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true, // Required for bypassPermissions
       maxTurns: 100,
-      additionalDirectories: [workingDirectory, ...skillDirectories],
+      additionalDirectories: [workingDirectory],
+      plugins: platformPlugins,
       canUseTool: createProjectScopedPermissionHandler(workingDirectory),
       includePartialMessages: false, // We don't need streaming deltas
       settingSources: ['user', 'project'],
@@ -269,8 +271,7 @@ export function createNativeClaudeQuery(
     };
 
     debugLog('[runner] [native-sdk] 🚀 Starting SDK query stream\n');
-    process.stderr.write(`[native-sdk] additionalDirectories: ${JSON.stringify([workingDirectory, ...skillDirectories])}\n`);
-    process.stderr.write(`[native-sdk] settingSources: ${JSON.stringify(options.settingSources)}\n`);
+    process.stderr.write(`[native-sdk] plugins: ${JSON.stringify(platformPlugins.map(p => p.path))}\n`);
 
     let messageCount = 0;
     let toolCallCount = 0;
