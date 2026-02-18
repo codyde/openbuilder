@@ -24,6 +24,9 @@ function getToolResource(tool: ToolCall): string {
   if (!tool.input) return '';
   const input = tool.input as Record<string, unknown>;
 
+  // Skill loads show the skill name
+  if (input.skillName) return input.skillName as string;
+
   // Priority order for resource extraction
   if (input.file_path) {
     const path = input.file_path as string;

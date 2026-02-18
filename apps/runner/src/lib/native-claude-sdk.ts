@@ -309,11 +309,49 @@ export function createNativeClaudeQuery(
           yield transformed;
         }
 
-        // Log system init message to verify skill discovery
+        // Capture SDK init message — this is the authoritative source for skill discovery
         if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
-          const initMsg = sdkMessage as { skills?: string[]; tools?: string[]; slash_commands?: string[] };
-          process.stderr.write(`[native-sdk] SDK init - skills: ${JSON.stringify(initMsg.skills ?? [])}\n`);
-          process.stderr.write(`[native-sdk] SDK init - tools: ${(initMsg.tools ?? []).length} tools loaded\n`);
+          const initMsg = sdkMessage as {
+            skills?: string[];
+            tools?: string[];
+            plugins?: { name: string; path: string }[];
+            slash_commands?: string[];
+            model?: string;
+          };
+          const discoveredSkills = initMsg.skills ?? [];
+          const loadedPlugins = initMsg.plugins ?? [];
+          const toolCount = (initMsg.tools ?? []).length;
+
+          process.stderr.write(`[native-sdk] SDK init — skills: [${discoveredSkills.join(', ')}] (${discoveredSkills.length})\n`);
+          process.stderr.write(`[native-sdk] SDK init — plugins: ${JSON.stringify(loadedPlugins)}\n`);
+          process.stderr.write(`[native-sdk] SDK init — tools: ${toolCount} loaded\n`);
+
+          if (discoveredSkills.length > 0) {
+            Sentry.logger.info('SDK initialized with skills', {
+              skillCount: String(discoveredSkills.length),
+              skills: discoveredSkills.join(', '),
+              pluginCount: String(loadedPlugins.length),
+              plugins: loadedPlugins.map(p => p.name).join(', '),
+              toolCount: String(toolCount),
+              model: initMsg.model ?? modelId,
+              workingDirectory,
+            });
+          } else {
+            Sentry.logger.warn('SDK initialized but no skills discovered', {
+              pluginCount: String(loadedPlugins.length),
+              plugins: JSON.stringify(loadedPlugins),
+              toolCount: String(toolCount),
+              model: initMsg.model ?? modelId,
+              workingDirectory,
+              platformPluginDir: platformPluginDir ?? 'null',
+            });
+          }
+        }
+
+        // Capture tool_use_summary messages — these indicate skill content loading
+        if (sdkMessage.type === 'tool_use_summary') {
+          const summaryMsg = sdkMessage as { summary?: string; preceding_tool_use_ids?: string[] };
+          process.stderr.write(`[native-sdk] Tool use summary: ${summaryMsg.summary}\n`);
         }
 
         // Log result messages

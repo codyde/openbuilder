@@ -203,6 +203,33 @@ export function transformAgentMessageToSSE(agentMessage: any): SSEEvent[] {
       };
 
       for (const block of message.content) {
+        // Detect skill invocations: the SDK loads skills via Read tool calls to SKILL.md files
+        if (block.type === 'tool_use' && block.name === 'Read') {
+          const filePath = block.input?.file_path || block.input?.filePath || block.input?.path || '';
+          if (typeof filePath === 'string' && filePath.includes('SKILL.md')) {
+            // Extract skill name from path: .../skills/<skill-name>/SKILL.md
+            const skillMatch = filePath.match(/skills\/([^/]+)\/SKILL\.md/);
+            const skillName = skillMatch ? skillMatch[1] : 'unknown';
+
+            // Emit a skill-invocation event so the frontend can display it
+            events.push({
+              type: 'tool-input-available',
+              toolCallId: block.id,
+              toolName: 'SkillLoad',
+              input: {
+                skillName,
+                filePath,
+              },
+            });
+
+            // Store tool name as SkillLoad so output is also tagged
+            transformerState.toolNames.set(block.id, 'SkillLoad');
+
+            // Skip normal tool_use processing for this block
+            continue;
+          }
+        }
+
         if (block.type === 'text' && block.text) {
           let text = String(block.text);
 
