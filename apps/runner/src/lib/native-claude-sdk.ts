@@ -288,18 +288,35 @@ export function createNativeClaudeQuery(
     let toolCallCount = 0;
     let textBlockCount = 0;
 
-    // Wrap the entire agent execution in a gen_ai.invoke_agent span for Sentry AI monitoring
-    const agentSpan = Sentry.startInactiveSpan({
-      op: 'gen_ai.invoke_agent',
-      name: `Claude Agent (${modelId})`,
-      attributes: {
-        'gen_ai.agent.name': 'hatchway-builder',
-        'gen_ai.request.model': modelId,
-        'gen_ai.agent.input': finalPrompt.substring(0, 500),
-        'gen_ai.system_prompt.length': appendedSystemPrompt.length,
-        'gen_ai.agent.available_tools': JSON.stringify(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']),
+    // Create the gen_ai.invoke_agent span using startSpanManual.
+    //
+    // Why startSpanManual and not startSpan?
+    // startSpan() takes a callback and ends the span when the callback returns.
+    // But this is an async generator — we can't yield from inside a callback.
+    // startSpanManual() makes the span active on the current scope AND gives us
+    // a handle to end it ourselves in the finally block.
+    //
+    // Why this works now (it didn't before):
+    // engine.ts captures the parent build.runner span before creating the
+    // ReadableStream, then restores it via Sentry.withActiveSpan() inside the
+    // stream's start() callback. So when this generator runs, the build.runner
+    // span is the active parent, and our gen_ai.invoke_agent becomes its child.
+    // Tool spans created with startSpan() inside the loop become children of
+    // gen_ai.invoke_agent because it's the active span at that point.
+    const agentSpan = Sentry.startSpanManual(
+      {
+        op: 'gen_ai.invoke_agent',
+        name: `Claude Agent (${modelId})`,
+        attributes: {
+          'gen_ai.agent.name': 'hatchway-builder',
+          'gen_ai.request.model': modelId,
+          'gen_ai.agent.input': finalPrompt.substring(0, 500),
+          'gen_ai.system_prompt.length': appendedSystemPrompt.length,
+          'gen_ai.agent.available_tools': JSON.stringify(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Task', 'TodoWrite', 'WebFetch']),
+        },
       },
-    });
+      (span) => span // Return the span so we control its lifecycle
+    );
 
     try {
       // Stream messages directly from the SDK
@@ -317,19 +334,25 @@ export function createNativeClaudeQuery(
                 toolCallCount++;
                 debugLog(`[runner] [native-sdk] 🔧 Tool call: ${block.name}\n`);
 
-                // Emit a gen_ai.execute_tool span for each tool invocation
-                const toolSpan = Sentry.startInactiveSpan({
-                  op: 'gen_ai.execute_tool',
-                  name: `Tool: ${block.name}`,
-                  attributes: {
-                    'gen_ai.tool.name': block.name,
-                    'gen_ai.tool.call_id': block.id,
-                    'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
+                // Emit a gen_ai.execute_tool span as a child of gen_ai.invoke_agent.
+                // Using startSpan (active) with an empty callback — the span is created,
+                // becomes briefly active, records the tool invocation, and ends when
+                // the callback returns. This gives Sentry the tool call event with
+                // proper parent-child nesting.
+                Sentry.startSpan(
+                  {
+                    op: 'gen_ai.execute_tool',
+                    name: `Tool: ${block.name}`,
+                    attributes: {
+                      'gen_ai.tool.name': block.name,
+                      'gen_ai.tool.call_id': block.id,
+                      'gen_ai.tool.input': JSON.stringify(block.input).substring(0, 1000),
+                    },
                   },
-                });
-                // Tool spans are completed immediately since we get input and output
-                // as separate messages — the output is captured in the tool_result handler below
-                toolSpan?.end();
+                  () => {
+                    // Span created and ended — marks the tool invocation point
+                  }
+                );
               } else if (block.type === 'text') {
                 textBlockCount++;
               }

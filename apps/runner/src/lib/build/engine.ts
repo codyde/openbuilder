@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
+import * as Sentry from '@sentry/node';
 import type { AgentId, ClaudeModelId } from '@hatchway/agent-core/types/agent';
 import { resolveAgentStrategy } from '@hatchway/agent-core/lib/agents';
 import { ensureProjectSkills } from '../skills.js';
@@ -105,34 +106,52 @@ export async function createBuildStream(options: BuildStreamOptions): Promise<Re
   const generator = query(fullPrompt, actualWorkingDir, systemPrompt, agent, options.codexThreadId, messageParts);
 
   debugLog('[runner] [build-engine] 📦 Creating ReadableStream from generator...\n');
+
+  // Capture the active Sentry span BEFORE creating the ReadableStream.
+  // The ReadableStream.start() callback runs in a new async context where the
+  // parent build.runner span is no longer active. We restore it with withActiveSpan()
+  // so that gen_ai.invoke_agent spans created inside the query generator are
+  // properly nested as children of the build.runner span.
+  const parentSpan = Sentry.getActiveSpan();
+
   // Create a ReadableStream from the AsyncGenerator
   const stream = new ReadableStream({
     async start(controller) {
       debugLog('[runner] [build-engine] ▶️  Stream start() called, beginning to consume generator...\n');
-      let chunkCount = 0;
-      try {
-        for await (const chunk of generator) {
-          chunkCount++;
-          if (chunkCount % 5 === 0) {
-            debugLog(`[runner] [build-engine] Processed ${chunkCount} chunks from generator\n`);
+
+      const consume = async () => {
+        let chunkCount = 0;
+        try {
+          for await (const chunk of generator) {
+            chunkCount++;
+            if (chunkCount % 5 === 0) {
+              debugLog(`[runner] [build-engine] Processed ${chunkCount} chunks from generator\n`);
+            }
+            // Convert chunk to appropriate format
+            if (typeof chunk === 'string') {
+              controller.enqueue(new TextEncoder().encode(chunk));
+            } else if (chunk instanceof Uint8Array) {
+              controller.enqueue(chunk);
+            } else if (typeof chunk === 'object') {
+              controller.enqueue(new TextEncoder().encode(JSON.stringify(chunk)));
+            }
           }
-          // Convert chunk to appropriate format
-          if (typeof chunk === 'string') {
-            controller.enqueue(new TextEncoder().encode(chunk));
-          } else if (chunk instanceof Uint8Array) {
-            controller.enqueue(chunk);
-          } else if (typeof chunk === 'object') {
-            controller.enqueue(new TextEncoder().encode(JSON.stringify(chunk)));
-          }
+          debugLog(`[runner] [build-engine] ✅ Generator exhausted after ${chunkCount} chunks, closing stream\n`);
+          controller.close();
+        } catch (error) {
+          debugLog(`[runner] [build-engine] ❌ Error consuming generator: ${error}\n`);
+          controller.error(error);
+        } finally {
+          // Restore the original working directory
+          process.chdir(originalCwd);
         }
-        debugLog(`[runner] [build-engine] ✅ Generator exhausted after ${chunkCount} chunks, closing stream\n`);
-        controller.close();
-      } catch (error) {
-        debugLog(`[runner] [build-engine] ❌ Error consuming generator: ${error}\n`);
-        controller.error(error);
-      } finally {
-        // Restore the original working directory
-        process.chdir(originalCwd);
+      };
+
+      // Restore the parent span context so child spans nest correctly
+      if (parentSpan) {
+        await Sentry.withActiveSpan(parentSpan, consume);
+      } else {
+        await consume();
       }
     },
   });
