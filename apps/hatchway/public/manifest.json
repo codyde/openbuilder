@@ -1,7 +1,7 @@
 {
   "name": "Hatchway",
   "short_name": "Hatchway",
-  "description": "Build and ship applications locally. Build cool things, prototype new ideas, break them, and fix it faster with Sentry.",
+  "description": "Think it. Build it. Ship it. Build cool things, prototype new ideas, and fix them when they break.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#121212",

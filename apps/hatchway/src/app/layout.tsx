@@ -20,7 +20,7 @@ const rubik = Rubik({
 
 export const metadata: Metadata = {
   title: "Hatchway - Think it. Build it. Ship it.",
-  description: "Build and ship applications locally. Build cool things, prototype new ideas, break them, and fix it faster with Sentry.",
+  description: "Think it. Build it. Ship it. Build cool things, prototype new ideas, and fix them when they break.",
   metadataBase: new URL("https://hatchway.app"),
   manifest: "/manifest.json",
   icons: {
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Hatchway - Think it. Build it. Ship it.",
-    description: "Build and ship applications locally. Build cool things, prototype new ideas, break them, and fix it faster with Sentry.",
+    description: "Think it. Build it. Ship it. Build cool things, prototype new ideas, and fix them when they break.",
     url: "https://hatchway.app",
     siteName: "Hatchway",
     type: "website",
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Hatchway - Think it. Build it. Ship it.",
-    description: "Build and ship applications locally. Build cool things, prototype new ideas, break them, and fix it faster with Sentry.",
+    description: "Think it. Build it. Ship it. Build cool things, prototype new ideas, and fix them when they break.",
     images: ["/og-image.png"],
   },
   keywords: ["AI", "app builder", "code generation", "full-stack", "developer tools", "hatchway"],
