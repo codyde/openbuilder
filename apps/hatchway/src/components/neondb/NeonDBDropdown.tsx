@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/components/ui/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { copyToClipboard } from '@/lib/clipboard-utils';
 
 interface NeonDBDropdownProps {
   projectId: string;
@@ -64,10 +65,14 @@ export function NeonDBDropdown({
 
   const handleCopyHost = async () => {
     if (status.host) {
-      await navigator.clipboard.writeText(status.host);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      addToast('success', 'Host copied to clipboard');
+      const result = await copyToClipboard(status.host);
+      if (result.success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        addToast('success', 'Host copied to clipboard');
+      } else {
+        addToast('error', result.error || 'Failed to copy to clipboard');
+      }
     }
   };
 

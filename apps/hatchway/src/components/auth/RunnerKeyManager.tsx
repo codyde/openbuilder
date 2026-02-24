@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { copyToClipboard } from "@/lib/clipboard-utils";
 import {
   Dialog,
   DialogContent,
@@ -123,12 +124,12 @@ export function RunnerKeyManager({ open, onOpenChange }: RunnerKeyManagerProps) 
   };
 
   const handleCopyKey = async (key: string, keyId?: string) => {
-    try {
-      await navigator.clipboard.writeText(key);
+    const result = await copyToClipboard(key);
+    if (result.success) {
       setCopiedKeyId(keyId || "new");
       setTimeout(() => setCopiedKeyId(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    } else {
+      console.error("Failed to copy:", result.error);
     }
   };
 

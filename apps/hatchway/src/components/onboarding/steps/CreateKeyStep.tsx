@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TerminalCodeBlock } from "../TerminalCodeBlock";
+import { copyToClipboard } from "@/lib/clipboard-utils";
 
 interface CreateKeyStepProps {
   onNext: (key: string) => void;
@@ -51,16 +52,17 @@ export function CreateKeyStep({ onNext, onBack }: CreateKeyStepProps) {
   const handleCopyAndNext = async () => {
     if (!createdKey) return;
     
-    try {
-      await navigator.clipboard.writeText(createdKey);
+    const result = await copyToClipboard(createdKey);
+    if (result.success) {
       setHasCopied(true);
-      setTimeout(() => {
-        onNext(createdKey);
-      }, 300);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-      onNext(createdKey);
+    } else {
+      console.error("Failed to copy:", result.error);
     }
+    
+    // Move to next step regardless of copy success
+    setTimeout(() => {
+      onNext(createdKey);
+    }, 300);
   };
 
   return (

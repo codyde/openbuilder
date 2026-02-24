@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/clipboard-utils";
 
 interface CodeBlockProps {
   code: string;
@@ -12,14 +13,18 @@ interface CodeBlockProps {
 
 export function CodeBlock({ code, language = "bash", className = "" }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
+    const result = await copyToClipboard(code);
+    
+    if (result.success) {
       setCopied(true);
+      setError(null);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    } else {
+      setError(result.error || 'Failed to copy to clipboard');
+      console.error("Failed to copy:", result.error);
     }
   };
 
