@@ -17,6 +17,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
+import { copyToClipboard } from '@/lib/clipboard-utils';
 
 type DevicePreset = 'desktop' | 'tablet' | 'mobile';
 
@@ -370,12 +371,12 @@ export default function PreviewPanel({
     // Copy the actual URL - prefer tunnel if available, otherwise localhost
     const url = verifiedTunnelUrl || currentProject?.tunnelUrl || `http://localhost:${actualPort}`;
 
-    try {
-      await navigator.clipboard.writeText(url);
+    const result = await copyToClipboard(url);
+    if (result.success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy URL:', err);
+    } else {
+      console.error('Failed to copy URL:', result.error);
     }
   };
 
@@ -734,10 +735,12 @@ export default function PreviewPanel({
                           sudo dscacheutil -flushcache{'\n'}sudo killall -HUP mDNSResponder
                         </code>
                         <button
-                          onClick={() => {
-                            navigator.clipboard.writeText('sudo dscacheutil -flushcache\nsudo killall -HUP mDNSResponder');
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
+                          onClick={async () => {
+                            const result = await copyToClipboard('sudo dscacheutil -flushcache\nsudo killall -HUP mDNSResponder');
+                            if (result.success) {
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            }
                           }}
                           className="absolute right-2 top-2 p-1.5 rounded bg-blue-500/20 hover:bg-blue-500/30 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Copy commands"
