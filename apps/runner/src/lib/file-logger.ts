@@ -20,6 +20,15 @@ function timestamp(): string {
   return new Date().toISOString();
 }
 
+// Intercept console methods to also write to file
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+  debug: console.debug,
+};
+
 function writeLog(file: string, level: string, ...args: unknown[]): void {
   const message = args.map(arg =>
     typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
@@ -30,8 +39,8 @@ function writeLog(file: string, level: string, ...args: unknown[]): void {
   try {
     appendFileSync(file, logLine);
   } catch (err) {
-    // Silently fail - don't want logging to crash the app
-    console.error('Failed to write log:', err);
+    // Use originalConsole to avoid infinite recursion
+    originalConsole.error('Failed to write log:', err);
   }
 }
 
@@ -82,15 +91,6 @@ export function setFileLoggerTuiMode(enabled: boolean): void {
     delete process.env.SILENT_MODE;
   }
 }
-
-// Intercept console methods to also write to file
-const originalConsole = {
-  log: console.log,
-  error: console.error,
-  warn: console.warn,
-  info: console.info,
-  debug: console.debug,
-};
 
 // Export original console for when we need direct output
 export { originalConsole };
